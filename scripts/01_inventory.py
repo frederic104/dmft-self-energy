@@ -1,9 +1,17 @@
-"""Placeholder entry point for source HDF5 inventory."""
+"""Entry point for source HDF5 inventory."""
+
+from pathlib import Path
+
+from dmft_data.inventory import run_inventory
 
 
 def main() -> None:
-    """Report that inventory is not implemented yet."""
-    raise NotImplementedError("HDF5 inventory is not implemented yet")
+    """Run inventory using the repository dataset configuration."""
+    repository_root = Path(__file__).resolve().parent.parent
+    run_inventory(
+        repository_root / "configs" / "dataset.yaml",
+        repository_root=repository_root,
+    )
 
 
 if __name__ == "__main__":
