@@ -6,11 +6,14 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pytest
+import yaml
 
 from dmft_data.extraction import (
     ComplexRepresentationError,
     UnsupportedSchemaError,
     read_hdf5_file,
+    run_extraction,
+    write_normalized_hdf5,
 )
 
 
@@ -148,3 +151,78 @@ def test_unknown_compound_dtype_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ComplexRepresentationError, match="compound dtype fields"):
         read_hdf5_file(path)
+
+
+def test_normalized_output_is_idempotent_and_separates_identifiers(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "raw" / "SVO" / "run.h5"
+    source.parent.mkdir(parents=True)
+    iw = np.array([1j, 3j, 5j])
+    with h5py.File(source, "w") as handle:
+        handle.attrs["run_id"] = "run-17"
+        handle.attrs["physical_state_id"] = "state-A"
+        handle.create_dataset("iw", data=iw)
+        handle.create_dataset(
+            "dmft/Sigma",
+            data=np.ones((2, 3), dtype=np.complex128),
+        )
+
+    extraction = read_hdf5_file(source, tmp_path / "raw")
+    output = tmp_path / "processed" / "arrays" / "SVO" / "run.h5"
+    first_path, first = write_normalized_hdf5(
+        extraction,
+        output,
+        {"preserve_complex_values": True},
+    )
+    second_path, second = write_normalized_hdf5(
+        extraction,
+        output,
+        {"preserve_complex_values": True},
+    )
+
+    assert first_path == second_path == output
+    assert first["status"] == "written"
+    assert second["status"] == "unchanged"
+    assert second["rewritten"] is False
+    with h5py.File(output, "r") as handle:
+        assert handle.attrs["run_id"] == "run-17"
+        assert handle.attrs["physical_state_id"] == "state-A"
+        assert handle["run/provenance"].attrs["sha256"] == extraction.sha256
+        assert np.iscomplexobj(handle["run/arrays/array_0000"][()])
+
+    with pytest.raises(FileExistsError, match="Refusing silent overwrite"):
+        write_normalized_hdf5(extraction, output, {"different": True})
+
+
+def test_failed_extraction_is_reported_without_silently_skipping(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repo"
+    raw = root / "data" / "raw" / "hdf5"
+    raw.mkdir(parents=True)
+    (raw / "broken.h5").write_text("not hdf5", encoding="utf-8")
+    config = root / "configs" / "dataset.yaml"
+    config.parent.mkdir()
+    config.write_text(
+        yaml.safe_dump({
+            "paths": {
+                "raw_dir": "data/raw/hdf5",
+                "processed_dir": "data/processed",
+                "report_dir": "reports",
+            },
+            "dataset": {
+                "file_extensions": [".h5", ".hdf5"],
+                "recursive": True,
+            },
+            "extraction": {"preserve_complex_values": True},
+        }),
+        encoding="utf-8",
+    )
+
+    report = run_extraction(config, root)
+
+    assert report["status"] == "failed"
+    assert report["files"] == []
+    assert report["failures"][0]["error_type"] == "UnsupportedSchemaError"
+    assert (root / "reports" / "hdf5_extraction.json").is_file()
