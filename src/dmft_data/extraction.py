@@ -582,6 +582,15 @@ def write_normalized_hdf5(
         extraction.file_attributes,
         extraction.relative_source_path,
     )
+    normalized_keys = {
+        key.lower() for key in extraction.file_attributes
+    }
+    run_id_explicit = bool(normalized_keys & {
+        "run_id", "calculation_run_id", "calculation_id", "run",
+    })
+    state_id_explicit = bool(normalized_keys & {
+        "physical_state_id", "state_id", "calculation_state_id",
+    })
     config = extraction_config or {}
     manifest = {
         "source_relative_path": extraction.relative_source_path,
@@ -614,6 +623,8 @@ def write_normalized_hdf5(
             handle.attrs["source_relative_path"] = extraction.relative_source_path
             handle.attrs["source_path"] = extraction.source_path
             handle.attrs["source_sha256"] = extraction.sha256
+            handle.attrs["run_id_explicit"] = run_id_explicit
+            handle.attrs["physical_state_id_explicit"] = state_id_explicit
             handle.attrs["extraction_config"] = _canonical_json(config)
             handle.attrs["h5py_version"] = software_versions()["h5py"]
             handle.attrs["numpy_version"] = software_versions()["numpy"]
