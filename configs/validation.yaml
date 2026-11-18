@@ -1,0 +1,20 @@
+
+validation:
+  check_shapes: true
+  check_dtype: true
+  check_finite: true
+  check_frequency_mesh: true
+  check_complex_values: true
+  check_duplicate_datasets: true
+  check_iteration_differences: true
+
+convergence:
+  enabled: false
+  criterion: null
+  threshold: null
+
+policy:
+  missing_metadata: record_unknown
+  invalid_dataset: report_error
+  failed_extraction: do_not_silently_skip
+  last_iteration_is_converged: false
