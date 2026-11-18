@@ -1,0 +1,37 @@
+
+project:
+  name: dmft-self-energy
+  version: "0.1.0"
+
+paths:
+  raw_dir: data/raw/hdf5
+  metadata_dir: data/metadata
+  processed_dir: data/processed
+  report_dir: reports
+
+dataset:
+  materials:
+    - SVO
+    - CVO
+    - BVO
+    - SNO
+    - BNO
+
+  file_extensions:
+    - .h5
+    - .hdf5
+
+  recursive: true
+
+extraction:
+  preserve_original_mesh: true
+  preserve_complex_values: true
+  preserve_iterations: true
+  preserve_spin_orbital_channels: true
+
+  create_converged_targets: false
+
+provenance:
+  calculate_sha256: true
+  record_source_path: true
+  record_extraction_version: true
