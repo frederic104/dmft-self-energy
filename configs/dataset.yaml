@@ -23,6 +23,14 @@ dataset:
 
   recursive: true
 
+  physical_state_metadata: data/metadata/physical_states.json
+  convergence_verification: data/metadata/convergence_verification.json
+
+  splits:
+    minimum_physical_states: 3
+
+  frequency_windows: []
+
 extraction:
   preserve_original_mesh: true
   preserve_complex_values: true
