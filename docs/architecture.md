@@ -12,5 +12,8 @@ The repository is organized around a non-destructive, staged data workflow:
 - `data/raw/` is reserved for original local data and is never modified.
 - `data/processed/` is reserved for derived numerical arrays and datasets.
 
-The initial repository only provides placeholders. It does not extract HDF5
-files or create scientific datasets.
+Phase 3 provides a strict representative HDF5 reader. It reconstructs
+candidate G0, G, Weiss, hybridization, and Sigma arrays only from verified
+native or real/imaginary representations. It preserves source paths,
+attributes, iteration identifiers, channel labels, and separately verified
+Matsubara meshes. Unsupported schemas raise explicit errors.
