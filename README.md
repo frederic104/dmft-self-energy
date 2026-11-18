@@ -45,7 +45,7 @@ included in this repository.
 
 - [ ] Repository structure
 - [ ] HDF5 inventory
-- [ ] HDF5 reader
+- [x] HDF5 reader
 - [ ] Data extraction
 - [ ] Numerical validation
 - [ ] Convergence assessment
