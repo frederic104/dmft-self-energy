@@ -9,13 +9,20 @@ evidence.
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 import re
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import h5py
 import numpy as np
+import yaml
+
+from .metadata import normalize_run_and_state
+from .provenance import sha256_file, software_versions
 
 
 class UnsupportedSchemaError(ValueError):
@@ -556,3 +563,222 @@ def read_hdf5_file(
 # Concise public aliases for callers that prefer either extraction or read naming.
 extract_hdf5_file = read_hdf5_file
 read_hdf5 = read_hdf5_file
+
+
+def _canonical_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+
+
+def write_normalized_hdf5(
+    extraction: HDF5Extraction,
+    destination: str | Path,
+    extraction_config: dict[str, Any] | None = None,
+    overwrite: bool = False,
+) -> tuple[Path, dict[str, Any]]:
+    """Write one normalized HDF5 file for a calculation run."""
+    output = Path(destination)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    run_id, physical_state_id = normalize_run_and_state(
+        extraction.file_attributes,
+        extraction.relative_source_path,
+    )
+    config = extraction_config or {}
+    manifest = {
+        "source_relative_path": extraction.relative_source_path,
+        "source_sha256": extraction.sha256,
+        "run_id": run_id,
+        "physical_state_id": physical_state_id,
+        "extraction_config_sha256": hashlib.sha256(
+            _canonical_json(config).encode("utf-8")
+        ).hexdigest(),
+        "extraction_config": config,
+        "software_versions": software_versions(),
+    }
+    manifest_path = output.with_suffix(output.suffix + ".manifest.json")
+
+    if output.exists():
+        if manifest_path.is_file():
+            existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if existing == manifest and not overwrite:
+                return output, {**manifest, "status": "unchanged", "rewritten": False}
+        if not overwrite:
+            raise FileExistsError(
+                f"Refusing silent overwrite of existing extraction output: {output}"
+            )
+
+    temporary = output.with_name(f".{output.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with h5py.File(temporary, "w") as handle:
+            handle.attrs["run_id"] = run_id
+            handle.attrs["physical_state_id"] = physical_state_id
+            handle.attrs["source_relative_path"] = extraction.relative_source_path
+            handle.attrs["source_path"] = extraction.source_path
+            handle.attrs["source_sha256"] = extraction.sha256
+            handle.attrs["extraction_config"] = _canonical_json(config)
+            handle.attrs["h5py_version"] = software_versions()["h5py"]
+            handle.attrs["numpy_version"] = software_versions()["numpy"]
+
+            run_group = handle.create_group("run")
+            run_group.attrs["run_id"] = run_id
+            run_group.attrs["physical_state_id"] = physical_state_id
+            run_group.attrs["source_relative_path"] = extraction.relative_source_path
+
+            provenance = run_group.create_group("provenance")
+            provenance.attrs["source_path"] = extraction.source_path
+            provenance.attrs["relative_source_path"] = extraction.relative_source_path
+            provenance.attrs["sha256"] = extraction.sha256
+
+            arrays_group = run_group.create_group("arrays")
+            for index, array in enumerate(extraction.arrays):
+                dataset = arrays_group.create_dataset(
+                    f"array_{index:04d}",
+                    data=np.asarray(array.values),
+                )
+                dataset.attrs["source_path"] = array.source_path
+                dataset.attrs["role"] = array.role
+                dataset.attrs["stored_dtype"] = array.stored_dtype
+                dataset.attrs["frequency_axis"] = (
+                    -1 if array.frequency_axis is None else array.frequency_axis
+                )
+                dataset.attrs["iteration"] = array.iteration or "unknown"
+                for key, value in array.attributes.items():
+                    try:
+                        dataset.attrs[f"source_attribute_{key}"] = _json_attribute(value)
+                    except (TypeError, ValueError):
+                        dataset.attrs[f"source_attribute_{key}"] = str(value)
+                if array.spin_labels is not None:
+                    dataset.attrs["spin_labels"] = array.spin_labels
+                if array.orbital_labels is not None:
+                    dataset.attrs["orbital_labels"] = array.orbital_labels
+                if array.frequency_mesh is not None:
+                    mesh = array.frequency_mesh
+                    mesh_dataset = arrays_group.create_dataset(
+                        f"mesh_{index:04d}",
+                        data=np.asarray(mesh.values),
+                    )
+                    mesh_dataset.attrs["source_path"] = mesh.source_path
+                    for key, value in mesh.attributes.items():
+                        try:
+                            mesh_dataset.attrs[f"source_attribute_{key}"] = _json_attribute(value)
+                        except (TypeError, ValueError):
+                            mesh_dataset.attrs[f"source_attribute_{key}"] = str(value)
+
+            meshes_group = run_group.create_group("meshes")
+            for index, mesh in enumerate(extraction.meshes):
+                mesh_dataset = meshes_group.create_dataset(
+                    f"mesh_{index:04d}",
+                    data=np.asarray(mesh.values),
+                )
+                mesh_dataset.attrs["source_path"] = mesh.source_path
+                for key, value in mesh.attributes.items():
+                    try:
+                        mesh_dataset.attrs[f"source_attribute_{key}"] = _json_attribute(value)
+                    except (TypeError, ValueError):
+                        mesh_dataset.attrs[f"source_attribute_{key}"] = str(value)
+
+        os.replace(temporary, output)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+    manifest_path.write_text(
+        _canonical_json(manifest) + "\n",
+        encoding="utf-8",
+    )
+    return output, {**manifest, "status": "written", "rewritten": bool(overwrite)}
+
+
+def _json_attribute(value: Any) -> Any:
+    return _json_value(value)
+
+
+def run_extraction(
+    config_path: str | Path,
+    repository_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Extract configured HDF5 sources into normalized per-run HDF5 files."""
+    config_path = Path(config_path)
+    root = (
+        Path(repository_root).resolve()
+        if repository_root is not None
+        else config_path.resolve().parent.parent
+    )
+    with config_path.open("r", encoding="utf-8") as handle:
+        config = yaml.safe_load(handle)
+    if not isinstance(config, dict):
+        raise TypeError(f"Configuration must be a mapping: {config_path}")
+
+    paths = config["paths"]
+    raw_dir = root / paths["raw_dir"]
+    processed_dir = root / paths["processed_dir"]
+    report_dir = root / paths["report_dir"]
+    extensions = config["dataset"].get("file_extensions", [".h5", ".hdf5"])
+    recursive = config["dataset"].get("recursive", True)
+    output_root = processed_dir / "arrays"
+
+    normalized_extensions = {
+        extension.lower() if extension.startswith(".") else f".{extension.lower()}"
+        for extension in extensions
+    }
+    if raw_dir.is_dir():
+        candidates = raw_dir.rglob("*") if recursive else raw_dir.iterdir()
+        sources = sorted(
+            (path for path in candidates if path.is_file()
+             and path.suffix.lower() in normalized_extensions),
+            key=lambda path: path.as_posix(),
+        )
+    else:
+        sources = []
+
+    report: dict[str, Any] = {
+        "status": "passed" if raw_dir.is_dir() else "failed",
+        "raw_dir": str(raw_dir.resolve()),
+        "output_dir": str(output_root.resolve()),
+        "extraction_config": config.get("extraction", {}),
+        "software_versions": software_versions(),
+        "files": [],
+        "failures": [],
+    }
+    if not raw_dir.is_dir():
+        report["failures"].append({
+            "relative_path": str(Path(paths["raw_dir"]).as_posix()),
+            "source_path": str(raw_dir.resolve()),
+            "error_type": "FileNotFoundError",
+            "error": f"Configured raw data directory does not exist: {raw_dir}",
+        })
+
+    extraction_config = config.get("extraction", {})
+    for source in sources:
+        relative = source.relative_to(raw_dir).as_posix()
+        try:
+            extraction = read_hdf5_file(source, raw_dir)
+            relative_output = Path(relative)
+            output = output_root / relative_output.with_suffix(".h5")
+            _, result = write_normalized_hdf5(
+                extraction,
+                output,
+                extraction_config=extraction_config,
+            )
+            report["files"].append({
+                "relative_source_path": relative,
+                "source_sha256": extraction.sha256,
+                "output_path": str(output.resolve()),
+                "status": result["status"],
+                "array_count": len(extraction.arrays),
+            })
+        except Exception as error:  # noqa: BLE001
+            report["status"] = "failed"
+            report["failures"].append({
+                "relative_path": relative,
+                "source_path": str(source.resolve()),
+                "source_sha256": sha256_file(source),
+                "error_type": type(error).__name__,
+                "error": str(error),
+            })
+
+    report_dir.mkdir(parents=True, exist_ok=True)
+    (report_dir / "hdf5_extraction.json").write_text(
+        _canonical_json(report) + "\n",
+        encoding="utf-8",
+    )
+    return report
