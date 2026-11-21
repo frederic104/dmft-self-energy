@@ -163,6 +163,35 @@ def test_scalar_beta_is_ignored_when_one_dimensional_mesh_is_present(
     assert candidate.frequency_axis == 0
 
 
+def test_object_metadata_matching_g0_path_is_not_a_candidate_array(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "g0_block_names.h5"
+    iw = np.array([1j * (2 * n + 1) * np.pi for n in range(3)])
+    with h5py.File(path, "w") as handle:
+        mesh = handle.create_group("dmft_output/G0-1/mesh")
+        mesh.create_dataset("MeshImFreq", data=iw)
+        g0_metadata = handle.create_group("dmft_output/G0-1/block_names")
+        g0_metadata.create_dataset("0", data="up", dtype=h5py.string_dtype())
+        handle.create_dataset(
+            "dmft_output/G0-1/G0",
+            data=np.zeros(3, dtype=np.complex128),
+        )
+
+    result = read_hdf5_file(path)
+
+    assert len(result.meshes) == 1
+    assert len(result.arrays) == 1
+    candidate = result.arrays[0]
+    assert candidate.source_path == "/dmft_output/G0-1/G0"
+    assert candidate.role == "dft_derived_g0"
+    assert candidate.frequency_mesh is not None
+    assert candidate.frequency_mesh.source_path == (
+        "/dmft_output/G0-1/mesh/MeshImFreq"
+    )
+    assert candidate.frequency_axis == 0
+
+
 def test_shape_mismatch_raises_explicit_error(tmp_path: Path) -> None:
     path = tmp_path / "bad_shape.h5"
     with h5py.File(path, "w") as handle:
