@@ -517,6 +517,8 @@ def read_hdf5_file(
             attrs = _attributes(object_)
             if not _is_candidate(source_path):
                 return
+            if object_.dtype.names is None and object_.dtype.kind not in "iufc":
+                return
             lower_path = source_path.lower()
             imaginary_suffixes = (
                 "_imag",
