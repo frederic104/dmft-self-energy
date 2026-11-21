@@ -101,7 +101,7 @@ def _is_candidate(path: str) -> bool:
     if _path_is_mesh(name):
         return False
     return (
-        re.search(r"/g(?:$|[_./])", name) is not None
+        re.search(r"/g(?:$|[_./-])", name) is not None
         or "/g0" in name
         or name.rstrip("/").endswith("/g")
         or "/gimp" in name
@@ -263,6 +263,29 @@ def _reconstruct_complex(
         raise UnsupportedSchemaError(
             f"{dataset.name}: unsupported dtype {dataset.dtype}"
         )
+
+    if dataset.attrs.get("__complex__", 0) == 1:
+        raw = np.asarray(dataset[()])
+        if raw.ndim < 1 or raw.shape[-1] != 2:
+            raise ComplexRepresentationError(
+                f"{dataset.name}: __complex__=1 requires a final Re/Im dimension"
+            )
+        real = raw[..., 0]
+        imag = raw[..., 1]
+        if real.dtype.kind not in "iuf" or imag.dtype.kind not in "iuf":
+            raise ComplexRepresentationError(
+                f"{dataset.name}: BlockGf real and imaginary components "
+                "must be numeric"
+            )
+        values = real + 1j * imag
+        if not np.all(np.isfinite(values.real)) or not np.all(
+            np.isfinite(values.imag)
+        ):
+            raise ComplexRepresentationError(
+                f"{dataset.name}: reconstructed complex values contain "
+                "non-finite numbers"
+            )
+        return values, "BlockGf real/imaginary last axis"
 
     name_lower = dataset.name.lower()
     name = dataset.name
@@ -439,9 +462,7 @@ def _associate_mesh(
     mesh = inline_mesh
     if mesh is None:
         if not meshes:
-            raise UnsupportedSchemaError(
-                f"{source_path}: no verified Matsubara frequency mesh was found"
-            )
+            return None, None
         if len(meshes) == 1:
             mesh = meshes[0]
         else:

@@ -192,6 +192,43 @@ def test_object_metadata_matching_g0_path_is_not_a_candidate_array(
     assert candidate.frequency_axis == 0
 
 
+def test_triqs_blockgf_last_axis_complex_without_mesh_vector(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "triqs_blockgf.h5"
+    raw = np.zeros((2050, 1, 1, 2), dtype=np.float64)
+    raw[..., 0] = 1.0
+    raw[..., 1] = 2.0
+    with h5py.File(path, "w") as handle:
+        blockgf = handle.create_group("dmft_output/G_iw")
+        block = blockgf.create_group("down_0")
+        data = block.create_dataset("data", data=raw)
+        data.attrs["__complex__"] = 1
+        mesh = block.create_group("mesh")
+        domain = mesh.create_group("domain")
+        domain.create_dataset("beta", data=np.float64(40.0))
+        domain.create_dataset(
+            "statistic",
+            data="Fermionic",
+            dtype=h5py.string_dtype(),
+        )
+        mesh.create_dataset("size", data=np.int64(2050))
+        mesh.create_dataset("positive_freq_only", data=np.int32(0))
+
+    result = read_hdf5_file(path)
+
+    assert len(result.meshes) == 0
+    assert len(result.arrays) == 1
+    candidate = result.arrays[0]
+    assert candidate.source_path == "/dmft_output/G_iw/down_0/data"
+    assert candidate.values.shape == (2050, 1, 1)
+    assert np.iscomplexobj(candidate.values)
+    assert np.all(candidate.values.real == 1.0)
+    assert np.all(candidate.values.imag == 2.0)
+    assert candidate.frequency_mesh is None
+    assert candidate.frequency_axis is None
+
+
 def test_shape_mismatch_raises_explicit_error(tmp_path: Path) -> None:
     path = tmp_path / "bad_shape.h5"
     with h5py.File(path, "w") as handle:
