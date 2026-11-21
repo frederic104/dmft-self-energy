@@ -77,6 +77,21 @@ python scripts/03_validate.py
 python scripts/04_build_dataset.py
 ```
 
+For a local laptop with large or restricted HDF5 data, create a small transfer
+bundle without sending the source payload:
+
+```bash
+python -m venv .venv
+.venv/bin/pip install -e ".[dev]"
+.venv/bin/python scripts/06_collect_laptop_results.py \
+  --source /path/to/local/hdf5 \
+  --output laptop-results
+```
+
+Send the generated `laptop-results/laptop_collection.zip` back to the
+workspace. The ZIP contains inventory, extraction, numerical-validation, and
+TRIQS-style diagnostic reports; it does not contain original HDF5 payloads.
+
 The commands will be enabled as the corresponding
 modules are implemented.
 
