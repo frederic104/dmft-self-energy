@@ -129,6 +129,40 @@ def test_inline_mesh_attribute_is_preserved(tmp_path: Path) -> None:
     assert np.allclose(g.frequency_mesh.values, iw)
 
 
+def test_scalar_beta_is_ignored_when_one_dimensional_mesh_is_present(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "domain_beta.h5"
+    iw = np.array([1j * (2 * n + 1) * np.pi for n in range(3)])
+    with h5py.File(path, "w") as handle:
+        beta_group = handle.create_group(
+            "dmft_output/G-1/down_0/mesh/domain"
+        )
+        beta_group.create_dataset("beta", data=np.float64(40.0))
+        handle.create_dataset(
+            "dmft_output/G-1/down_0/mesh/MeshImFreq",
+            data=iw,
+        )
+        handle.create_dataset(
+            "dmft_output/G-1/down_0/G",
+            data=np.ones(3, dtype=np.complex128),
+        )
+
+    result = read_hdf5_file(path)
+
+    assert len(result.meshes) == 1
+    assert result.meshes[0].source_path == (
+        "/dmft_output/G-1/down_0/mesh/MeshImFreq"
+    )
+    assert np.allclose(result.meshes[0].values, iw)
+    assert len(result.arrays) == 1
+    candidate = result.arrays[0]
+    assert candidate.source_path == "/dmft_output/G-1/down_0/G"
+    assert candidate.frequency_mesh is not None
+    assert candidate.frequency_mesh.source_path == result.meshes[0].source_path
+    assert candidate.frequency_axis == 0
+
+
 def test_shape_mismatch_raises_explicit_error(tmp_path: Path) -> None:
     path = tmp_path / "bad_shape.h5"
     with h5py.File(path, "w") as handle:

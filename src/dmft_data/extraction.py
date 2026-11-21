@@ -342,6 +342,10 @@ def _find_meshes(handle: h5py.File) -> tuple[FrequencyMesh, ...]:
     def visit(name: str, object_: h5py.Group | h5py.Dataset) -> None:
         if not isinstance(object_, h5py.Dataset) or not _path_is_mesh(f"/{name}"):
             return
+        if object_.ndim == 0:
+            return
+        if object_.ndim != 1:
+            return
         attrs = _attributes(object_)
         dtype = object_.dtype
         if dtype.names or dtype.kind not in "iufc":
