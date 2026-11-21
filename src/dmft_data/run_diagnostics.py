@@ -66,9 +66,14 @@ def _mesh_metadata(dmft: h5py.Group) -> dict[str, Any]:
 
 def _complex_payload(dataset: h5py.Dataset) -> np.ndarray | None:
     raw = np.asarray(dataset[()])
-    if dataset.attrs.get("__complex__", 0) == 1 and raw.ndim >= 1:
+    if (
+        dataset.attrs.get("__complex__", 0) == 1
+        or dataset.attrs.get("complex", 0) == 1
+    ) and raw.ndim >= 1:
         if raw.shape[-1] == 2:
             return raw[..., 0] + 1j * raw[..., 1]
+    if raw.ndim >= 1 and raw.shape[-1] == 2 and raw.dtype.kind in "iuf":
+        return raw[..., 0] + 1j * raw[..., 1]
     if dataset.dtype.kind == "c":
         return raw
     return None
@@ -85,25 +90,41 @@ def _final_equivalence(
             "available": False,
             "last_iteration": iterations[-1] if iterations else None,
             "blocks": [],
+            "reason": (
+                "missing_iteration_groups"
+                if not iterations
+                else "missing_final_quantity"
+            ),
         }
 
     last = iterations[-1]
     block_comparisons = []
+    missing_blocks = []
+    shape_mismatches = []
+    unsupported_payloads = []
     for block_name, block in final.items():
         if not isinstance(block, h5py.Group):
             continue
         final_dataset = block.get("data")
         iteration_dataset = dmft.get(f"{quantity}-{last}/{block_name}/data")
         if not isinstance(final_dataset, h5py.Dataset):
+            missing_blocks.append(block_name)
             continue
         if not isinstance(iteration_dataset, h5py.Dataset):
+            missing_blocks.append(block_name)
             continue
 
         final_values = _complex_payload(final_dataset)
         iteration_values = _complex_payload(iteration_dataset)
         if final_values is None or iteration_values is None:
+            unsupported_payloads.append(block_name)
             continue
         if final_values.shape != iteration_values.shape:
+            shape_mismatches.append({
+                "block": block_name,
+                "final_shape": list(final_values.shape),
+                "iteration_shape": list(iteration_values.shape),
+            })
             continue
 
         difference = np.abs(final_values - iteration_values)
@@ -119,6 +140,10 @@ def _final_equivalence(
         "available": bool(block_comparisons),
         "last_iteration": last,
         "blocks": block_comparisons,
+        "reason": None if block_comparisons else "no_comparable_blocks",
+        "missing_blocks": missing_blocks,
+        "shape_mismatches": shape_mismatches,
+        "unsupported_payloads": unsupported_payloads,
     }
 
 
