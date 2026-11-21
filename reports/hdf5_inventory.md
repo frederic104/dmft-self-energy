@@ -5,85 +5,22 @@ It does not extract scientific arrays or infer physical meanings.
 
 ## Summary
 
-- Files discovered: 62
-- Successfully opened: 62
-- Failed: 0
-- Groups: 116052
-- Datasets: 250426
-- Failures: 0
+- Files discovered: 1
+- Successfully opened: 0
+- Failed: 1
+- Groups: 0
+- Datasets: 0
+- Failures: 1
 
 ## Name-Based Dataset Candidates
 
-- `candidate_frequency_mesh`
-- `candidate_green_function`
-- `candidate_self_energy`
+- No name-based candidates identified.
 
 ## File Status
 
 | Relative source path | Status | SHA-256 | Error |
 |---|---|---|---|
-| `BNO/BNO.h5` | success | `fab5abd4293d50278ea2fd515bd85a9c026d7c59bc22e21aa780cb622c3fa13c` |  |
-| `BVO/BVO_beta40_nwarmup100000.h5` | success | `8715ba03f9b6a5e3816a6d32f90448c9d55154f2f44ea18a14e146a0ebb300b9` |  |
-| `BVO/BVO_beta40_nwarmup150000.h5` | success | `067e0f46b1fefa40f64d80a5430854d7cdbe47f2a63fd6e50e4aa9d91c5ab829` |  |
-| `BVO/BVO_beta40_nwarmup200000.h5` | success | `b116f3a5797ac0163b47d771c9ff9d65bf1866c5e6665713ae9eeffbd4f3bdff` |  |
-| `BVO/BVO_beta40_nwarmup250000.h5` | success | `6ad637b1a9a9013393cd751c0a2f5ad2ef1432df65128157e7d3fc2b2f80cdd8` |  |
-| `BVO/BVO_beta40_nwarmup300000.h5` | success | `99d0808ba8a028e167dbc0040db16235f49c4cdd21c0bd05d690fa14cf5190b7` |  |
-| `BVO/BVO_beta40_nwarmup350000.h5` | success | `1c03d6d5867b373e3f2848c4fef3ecd546b610d7ec6375eb5042da91511d5816` |  |
-| `CVO/CVO_beta40_nwarmup100000.h5` | success | `a925cbd02e05180f46a08d0e21580f9271bf32823aceb2c9367d2028553b3001` |  |
-| `CVO/CVO_beta40_nwarmup150000.h5` | success | `38cc6a87dc7dfcb43c10b550b82ca8e919a6c96b6b31af11638b220a08012983` |  |
-| `CVO/CVO_beta40_nwarmup200000.h5` | success | `5bec570dd23ca8654d845521d0baaa26bbb455b8ef274f6ab7ab49d07c4a9b6c` |  |
-| `CVO/CVO_beta40_nwarmup250000.h5` | success | `f78f4299a17a5e39ae5c202f36674242c606bd96f4e50a7d9026177b7b54d69f` |  |
-| `CVO/CVO_beta40_nwarmup300000.h5` | success | `daf8871215dd18c52e289e4d74d84ad49fc1eb6f7dd2014a6c8b5936e95ea8a6` |  |
-| `CVO/CVO_beta40_nwarmup350000.h5` | success | `84974a72e436a6457ec645e6b9aa7012f05b47d10090121bbc4308e6b6e43703` |  |
-| `SNO/SNO_beta40_nwarmup100000.h5` | success | `801a7513b4c7161cb51a7f21d504f970537f87e3b4764e6916675c017629813a` |  |
-| `SNO/SNO_beta40_nwarmup150000.h5` | success | `3a8eda2bef01435fea83041264e16d7b50a489ef7bbd8da8868643c6695d8c97` |  |
-| `SNO/SNO_beta40_nwarmup200000.h5` | success | `a98eb5e8af08e63b7e17394d2c75f881f5e3af1d88755a0d924792ff18099f33` |  |
-| `SNO/SNO_beta40_nwarmup250000.h5` | success | `ae5483566e47cb556dae4ce40454ff2dd915818812853267e50d9aec3e1b4352` |  |
-| `SNO/SNO_beta40_nwarmup300000.h5` | success | `4a8ac2f5ef2d46490aec2cc302b271da54dfc35971d0246d6d834f14db98a7be` |  |
-| `SNO/SNO_beta40_nwarmup350000.h5` | success | `38cd677c8ab62cbe4200be81b48e97ae713c45d64519af57f846b4f470f1caac` |  |
-| `SNO/SNO_beta40_nwarmup400000.h5` | success | `94387f9439121e60ef0a906d200864642983f296336977ed6e5df82904d48df5` |  |
-| `SNO/SNO_beta40_nwarmup450000.h5` | success | `e68c1622be916729d11a2210dc211f02dad4bcccca3ac8463238ee355b870f19` |  |
-| `SNO/SNO_beta40_nwarmup50000.h5` | success | `8e091d2a1366cc9b2aacaf264d92a5cd3e1c6e5beb40c2e0ffb675704cae5b92` |  |
-| `SNO/SNO_beta40_nwarmup500000.h5` | success | `3271defa032c348ff22bf7a7c5384ddf3cdab2ff3518f7cf013750b195232622` |  |
-| `SNO/beta-variation/SNO_beta100_nwarmup150000.h5` | success | `855555e2f26441f8c11edc5dedd9b2010db4bb6d12a770c894f93ac23c25c294` |  |
-| `SNO/beta-variation/SNO_beta20_nwarmup150000.h5` | success | `21a9c7cc0df31ba3365edb4d1d78c94813f6fb42c55c9ad2a22117f35f6718d4` |  |
-| `SNO/beta-variation/SNO_beta40_nwarmup150000.h5` | success | `3a8eda2bef01435fea83041264e16d7b50a489ef7bbd8da8868643c6695d8c97` |  |
-| `SNO/beta-variation/SNO_beta60_nwarmup150000.h5` | success | `d5bb098a9ea81626565ee9a5ecdf7e057aa20a057b965fcc75cf69765a10b11f` |  |
-| `SNO/beta-variation/SNO_beta80_nwarmup150000.h5` | success | `96320cdb1631df145794d9fdc43f3b5523f3185b0928308b5b4a9e80c06152c5` |  |
-| `SVO/svo_beta40_nwarmup100000.h5` | success | `4cfff84764d8f13b9fafd8f4aeef6fcd771c87e8f4eb43e347befa050b2e6526` |  |
-| `SVO/svo_beta40_nwarmup120000.h5` | success | `936f2ab302211cba95c50a5bb6d2ab504dd0aa8eb4e39a8e47c25ce171353fd1` |  |
-| `SVO/svo_beta40_nwarmup140000.h5` | success | `99f737eeee43014732c2bbd6e87c01ff9fae81d4a9b6e9f5b7023eef2e7af859` |  |
-| `SVO/svo_beta40_nwarmup160000.h5` | success | `6775a6532d75787a485fb7bd201a92b6cdbe1b0bb225cff32b4f7fa70d448c5f` |  |
-| `SVO/svo_beta40_nwarmup180000.h5` | success | `e64ebd054ccc838583a4e3d6f00ced16f90db01dafb8a59b23dcfffc0044758b` |  |
-| `SVO/svo_beta40_nwarmup200000.h5` | success | `31c949b54e8ea20c937d411f43cd2c591d3b03df7dc7f4cb85cc45f7511fd3ac` |  |
-| `SVO/svo_beta40_nwarmup220000.h5` | success | `f342365afcb744541ec580b4712a4d3bda9046f15c69caa03447948fafbf00b8` |  |
-| `SVO/svo_beta40_nwarmup240000.h5` | success | `c463bbf62f36f2b64b031e4deb525c99d56e88a3c1f078b738eae34446d59fbf` |  |
-| `SVO/svo_beta40_nwarmup260000.h5` | success | `5d62944138cc92b7f85b76d2298dd47e08b7c641332265f041df1b830e91580b` |  |
-| `SVO/svo_beta40_nwarmup280000.h5` | success | `c5e11fb52348b842c083786e7624b0a39c33a5a2c942ebe728de4e790c025cc1` |  |
-| `SVO/svo_beta40_nwarmup300000.h5` | success | `96e1557d666f802721c49304e0e26b120eb75b6385cd9ae7f5581da99b303e69` |  |
-| `SVO/svo_beta40_nwarmup320000.h5` | success | `fba61b833c8da397085059cf91b7e0960f2f05586729a7eee607de51442140e2` |  |
-| `SVO/svo_beta40_nwarmup340000.h5` | success | `148478f8f0baf59283272bd6de351406d49856163e09f7719c1652d185aeb3f6` |  |
-| `SVO/svo_beta40_nwarmup360000.h5` | success | `d119e9e18a838b451473629ebff0ab96d550d139440afed4f0df3407125614d7` |  |
-| `SVO/svo_beta40_nwarmup380000.h5` | success | `c092897aa3802fa54286871634affd3d1934cccecd5a68a5675187d4f6f77a2d` |  |
-| `SVO/svo_beta40_nwarmup400000.h5` | success | `5cc8b0aeeb66f9fb186414ca332ffd77355e28d818f5cb47673e41c31071c26b` |  |
-| `SVO/svo_beta40_nwarmup420000.h5` | success | `a40c097760c17a264eec89269ddfde1dd9d4980b6a72959901342f6b792ccda6` |  |
-| `SVO/svo_beta40_nwarmup440000.h5` | success | `f714a66f75f4544753a6fcfa87234bcdb86836fee0c1db56238c37502d9b57aa` |  |
-| `SVO/svo_beta40_nwarmup460000.h5` | success | `0bfed020a5ac1f00e58d5a390daf60d8c6e0b9818ceead71e8303e07b516c67b` |  |
-| `SVO/svo_beta40_nwarmup480000.h5` | success | `6ade5d58bdf2ca027cdcaeffc3433c316b8c8c4e62c2bb819985249e7428d8a7` |  |
-| `SVO/svo_beta40_nwarmup50000.h5` | success | `1c58c1f9a53ed8016a2baa4ed98b6dddcb2569b3b8d525463eca9eedbb241136` |  |
-| `SVO/svo_beta40_nwarmup500000.h5` | success | `121509483ccd06ff445b7c40ad22eefb0e62ac618946e4e1ff60056b47e83773` |  |
-| `SVO/svo_beta40_nwarmup520000.h5` | success | `d5b596f880fc3a9ec9ff88d47bd1f428f977b5acbb1e0a545f5c7d6c60be55a4` |  |
-| `SVO/svo_beta40_nwarmup540000.h5` | success | `dd63c5a9fbd4a42fee681bad8a137a4b82f3a9b66ef453387c1468658e4a6bda` |  |
-| `SVO/svo_beta40_nwarmup560000.h5` | success | `1d5570ff9474d20878787f04b08aaebff51093218b970714eeba26faa747ed32` |  |
-| `SVO/svo_beta40_nwarmup580000.h5` | success | `715e78bf23b958fe5d1c706156a70c5bb763b0d636634187a94278d2a7131926` |  |
-| `SVO/svo_beta40_nwarmup60000.h5` | success | `dc66039943ffe6eb1cd15d9e71dfea8fbdc283057bf28e37020de21b004b6705` |  |
-| `SVO/svo_beta40_nwarmup620000.h5` | success | `e1e5700331fc7a83c17dcc25040dd7408f09e747b680deb5668fbb70f28bf5dc` |  |
-| `SVO/svo_beta40_nwarmup640000.h5` | success | `9b1014bdd75e3d370db12ecc17d80fecfdd5d0ae816cd4fb9466ac70aab1d413` |  |
-| `SVO/svo_beta40_nwarmup660000.h5` | success | `a1617380e48aebadb442c4e2b9f0bd0ce1d2d4cf906899002cc99fddbf3c80cd` |  |
-| `SVO/svo_beta40_nwarmup680000.h5` | success | `ba9051e7d942321521ea730aca6b540f52e8bd12e9601708fd85a0fd717701e0` |  |
-| `SVO/svo_beta40_nwarmup70000.h5` | success | `6fc376c447cfb246aaa1733fd09ca461739b2fc0882f377112d26280f25cd25c` |  |
-| `SVO/svo_beta40_nwarmup80000.h5` | success | `5c3273acf115ef9c24c579895c9041e8122a48988d4c03d42175569b293eeb3c` |  |
-| `SVO/svo_beta40_nwarmup90000.h5` | success | `9b60db536a7871dfbb4bf5fbb26b15cab4c01441ed512b9afe4d51326b64405e` |  |
+| `data/raw/hdf5` | failed | `` | Configured raw data directory does not exist: /workspaces/dmft-self-energy/frederic104/dmft-self-energy/data/raw/hdf5 |
 
 ## Unresolved Schema Questions
 
