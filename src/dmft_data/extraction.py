@@ -744,6 +744,14 @@ def write_normalized_hdf5(
             existing = json.loads(manifest_path.read_text(encoding="utf-8"))
             if existing == manifest and not overwrite:
                 return output, {**manifest, "status": "unchanged", "rewritten": False}
+            if (
+                existing.get("source_sha256") == manifest["source_sha256"]
+                and existing.get("source_relative_path")
+                == manifest["source_relative_path"]
+                and existing.get("extraction_config_sha256")
+                == manifest["extraction_config_sha256"]
+            ):
+                overwrite = True
         if not overwrite:
             raise FileExistsError(
                 f"Refusing silent overwrite of existing extraction output: {output}"
