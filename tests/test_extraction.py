@@ -370,6 +370,54 @@ def test_normalized_output_derives_run_and_verified_mesh_state(
         assert handle.attrs["parameter_block"] == "beta=40"
 
 
+def test_normalized_output_updates_metadata_for_same_source_and_config(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "raw" / "SVO" / "run.h5"
+    source.parent.mkdir(parents=True)
+    iw = np.array([1j, 3j, 5j])
+    with h5py.File(source, "w") as handle:
+        dmft = handle.create_group("dmft_output/G_iw/down_0")
+        dmft.create_dataset("data", data=np.zeros((2050, 1, 1, 2)))
+        dmft["data"].attrs["__complex__"] = 1
+        mesh = dmft.create_group("mesh")
+        domain = mesh.create_group("domain")
+        domain.create_dataset("beta", data=np.float64(40.0))
+        domain.create_dataset("statistic", data="F", dtype=h5py.string_dtype())
+        mesh.create_dataset("size", data=np.int64(2050))
+        mesh.create_dataset("positive_freq_only", data=np.int32(0))
+
+    extraction = read_hdf5_file(source, tmp_path / "raw")
+    output = tmp_path / "processed" / "arrays" / "SVO" / "run.h5"
+    extraction_config = {"preserve_complex_values": True}
+    _, first = write_normalized_hdf5(
+        extraction,
+        output,
+        extraction_config,
+    )
+    assert first["status"] == "written"
+
+    manifest_path = output.with_suffix(output.suffix + ".manifest.json")
+    old_manifest = __import__("json").loads(
+        manifest_path.read_text(encoding="utf-8")
+    )
+    old_manifest["physical_state_id"] = "unknown"
+    manifest_path.write_text(
+        __import__("json").dumps(old_manifest),
+        encoding="utf-8",
+    )
+
+    _, updated = write_normalized_hdf5(
+        extraction,
+        output,
+        extraction_config,
+    )
+
+    assert updated["status"] == "written"
+    assert updated["rewritten"] is True
+    assert updated["physical_state_id"] == "material=SVO,beta=40"
+
+
 def test_failed_extraction_is_reported_without_silently_skipping(
     tmp_path: Path,
 ) -> None:
