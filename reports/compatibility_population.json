@@ -1,0 +1,8 @@
+{
+  "canonical_path": "data/processed/research_datasets/compatibility_deep_dmft/canonical.h5",
+  "limitations": [
+    "Compatibility canonical HDF5 was not present in this workspace."
+  ],
+  "record_count": 0,
+  "status": "missing_input"
+}
