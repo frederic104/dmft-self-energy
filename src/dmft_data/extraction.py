@@ -705,10 +705,26 @@ def write_normalized_hdf5(
     }
     run_id_explicit = bool(normalized_keys & {
         "run_id", "calculation_run_id", "calculation_id", "run",
-    })
+    }) or bool(extraction.relative_source_path)
+
+    derived_state = None
+    beta_values = {
+        float(mesh.attributes["beta"])
+        for mesh in extraction.meshes
+        if "beta" in mesh.attributes
+    }
+    material = extraction.relative_source_path.split("/", 1)[0]
+    if len(beta_values) == 1:
+        beta = next(iter(beta_values))
+        beta_text = str(int(beta)) if beta.is_integer() else str(beta)
+        if material:
+            derived_state = f"material={material},beta={beta_text}"
     state_id_explicit = bool(normalized_keys & {
         "physical_state_id", "state_id", "calculation_state_id",
     })
+    if not state_id_explicit and derived_state is not None:
+        physical_state_id = derived_state
+        state_id_explicit = True
     config = extraction_config or {}
     manifest = {
         "source_relative_path": extraction.relative_source_path,
@@ -743,6 +759,13 @@ def write_normalized_hdf5(
             handle.attrs["source_sha256"] = extraction.sha256
             handle.attrs["run_id_explicit"] = run_id_explicit
             handle.attrs["physical_state_id_explicit"] = state_id_explicit
+            if material:
+                handle.attrs["material"] = material
+            if len(beta_values) == 1:
+                beta = next(iter(beta_values))
+                handle.attrs["beta"] = beta
+                beta_text = str(int(beta)) if beta.is_integer() else str(beta)
+                handle.attrs["parameter_block"] = f"beta={beta_text}"
             handle.attrs["extraction_config"] = _canonical_json(config)
             handle.attrs["h5py_version"] = software_versions()["h5py"]
             handle.attrs["numpy_version"] = software_versions()["numpy"]

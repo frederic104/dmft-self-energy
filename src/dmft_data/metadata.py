@@ -19,7 +19,7 @@ def normalize_run_and_state(
     file_attributes: dict[str, Any],
     relative_source_path: str,
 ) -> tuple[str, str]:
-    """Return explicit identifiers; infer no physical state or run semantics."""
+    """Return explicit identifiers; fall back to the source-relative run path."""
     run_id = _explicit_attribute(
         file_attributes,
         ("run_id", "calculation_run_id", "calculation_id", "run"),
