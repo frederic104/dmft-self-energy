@@ -304,10 +304,39 @@ def _derive_reduced_window(
             start = window_config.get("start")
             stop = window_config.get("stop")
             count = window_config.get("count")
-            if start is not None or stop is not None:
+            positive_frequency = bool(window_config.get("positive_frequency", False))
+            if positive_frequency:
+                if start is not None or stop is not None:
+                    raise ValueError(
+                        f"Reduced window {window_name!r} cannot combine "
+                        "positive_frequency with start/stop"
+                    )
+                positive_indices = np.flatnonzero(np.imag(mesh) > 0)
+                if not np.all(np.diff(positive_indices) >= 0):
+                    raise ValueError(
+                        f"Reduced window {window_name!r} has unsorted positive "
+                        "frequency indices"
+                    )
+                if not isinstance(count, int) or count < 1:
+                    raise ValueError(
+                        f"Reduced window {window_name!r} requires a positive "
+                        "integer count"
+                    )
+                if positive_indices.size < count:
+                    raise ValueError(
+                        f"Reduced window {window_name!r} requests {count} positive "
+                        f"frequencies but mesh contains only {positive_indices.size}"
+                    )
+                selected = positive_indices[:count]
+            elif start is not None or stop is not None:
                 selected = np.arange(mesh.size)[slice(start, stop)]
             elif isinstance(count, int) and count >= 1:
-                selected = np.arange(min(count, mesh.size))
+                if mesh.size < count:
+                    raise ValueError(
+                        f"Reduced window {window_name!r} requests {count} "
+                        f"frequencies but mesh contains only {mesh.size}"
+                    )
+                selected = np.arange(count)
             else:
                 raise ValueError(
                     f"Reduced window {window_name!r} requires start/stop or count"
@@ -634,6 +663,7 @@ def build_research_datasets(
             for label, canonical in (
                 ("deep_dmft", baseline_dir / "canonical.h5"),
                 ("physics", physics_dir / "canonical.h5"),
+                ("compatibility", compatibility_dir / "canonical.h5"),
             ):
                 result = _derive_reduced_window(
                     canonical,

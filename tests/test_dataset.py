@@ -132,7 +132,7 @@ def test_builds_converged_primary_and_blocked_splits(tmp_path: Path) -> None:
     assert report["physics_constrained"]["record_count"] == 6
     assert report["compatibility"]["record_count"] == 9
     assert report["auxiliary"]["record_count"] == 0
-    assert len(report["derived"]) == 2
+    assert len(report["derived"]) == 3
 
     split_path = root / "data" / "processed" / "research_datasets" / "blocked_splits.json"
     splits = __import__("json").loads(split_path.read_text())
@@ -160,3 +160,41 @@ def test_insufficient_states_does_not_create_misleading_splits(tmp_path: Path) -
     assert report["status"] == "insufficient_physical_states"
     assert report["blocked_splits"]["status"] == "insufficient_physical_states"
     assert report["blocked_splits"]["splits"] == {}
+
+
+def test_derived_window_selects_first_positive_matsubara_frequencies(
+    tmp_path: Path,
+) -> None:
+    root, config = _config(tmp_path)
+    config_data = yaml.safe_load(config.read_text(encoding="utf-8"))
+    config_data["dataset"]["frequency_windows"] = [{
+        "name": "positive_low_frequency",
+        "count": 2,
+        "positive_frequency": True,
+    }]
+    config.write_text(yaml.safe_dump(config_data), encoding="utf-8")
+    normalized = root / "data" / "processed" / "arrays"
+    _write_normalized_run(
+        normalized / "run-a.h5", "state-A", "run-a", "SVO", "300"
+    )
+
+    metadata_dir = root / "data" / "metadata"
+    metadata_dir.mkdir(parents=True)
+    (metadata_dir / "convergence_verification.json").write_text(
+        '{"converged_iterations":["4"], "convergence_verified":true}',
+        encoding="utf-8",
+    )
+
+    report = build_research_datasets(config, root)
+
+    assert len(report["derived"]) == 3
+    derived_path = root / "data" / "processed" / "research_datasets" / "derived"
+    output = derived_path / "deep_dmft_positive_low_frequency.h5"
+    with h5py.File(output, "r") as handle:
+        group = handle["runs"]["record_000000"]
+        mesh = group["matsubara_mesh"][()]
+        values = group["values"][()]
+        assert np.all(np.imag(mesh) > 0)
+        assert mesh.shape == (2,)
+        assert values.shape == (2, 2)
+        assert np.array_equal(group.attrs["window_source_indices"], np.array([0, 1]))
