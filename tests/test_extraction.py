@@ -237,6 +237,42 @@ def test_triqs_blockgf_last_axis_complex_without_mesh_vector(
     assert candidate.frequency_axis == 0
 
 
+def test_triqs_g_tau_is_not_assigned_matsubara_mesh(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "triqs_g_tau.h5"
+    iw_data = np.zeros((2050, 1, 1, 2), dtype=np.float64)
+    tau_data = np.zeros((10001, 1, 1, 2), dtype=np.float64)
+    iw_data[..., 0] = 1.0
+    iw_data[..., 1] = 2.0
+    tau_data[..., 0] = 3.0
+    tau_data[..., 1] = 4.0
+    with h5py.File(path, "w") as handle:
+        dmft = handle.create_group("dmft_output")
+        iw_block = dmft.create_group("G_iw/down_0")
+        iw_block.create_dataset("data", data=iw_data)
+        iw_block["data"].attrs["__complex__"] = 1
+        mesh = dmft.create_group("G_iw/down_0/mesh")
+        domain = mesh.create_group("domain")
+        domain.create_dataset("beta", data=np.float64(40.0))
+        domain.create_dataset("statistic", data="F", dtype=h5py.string_dtype())
+        mesh.create_dataset("size", data=np.int64(2050))
+        mesh.create_dataset("positive_freq_only", data=np.int32(0))
+
+        tau_block = dmft.create_group("G_tau/down_0")
+        tau_block.create_dataset("data", data=tau_data)
+        tau_block["data"].attrs["__complex__"] = 1
+
+    result = read_hdf5_file(path)
+
+    assert len(result.arrays) == 1
+    candidate = result.arrays[0]
+    assert candidate.source_path == "/dmft_output/G_iw/down_0/data"
+    assert candidate.frequency_mesh is not None
+    assert candidate.frequency_mesh.values.shape == (2050,)
+    assert candidate.frequency_axis == 0
+
+
 def test_shape_mismatch_raises_explicit_error(tmp_path: Path) -> None:
     path = tmp_path / "bad_shape.h5"
     with h5py.File(path, "w") as handle:

@@ -98,6 +98,8 @@ def _classify_role(path: str, attrs: dict[str, Any]) -> str:
 
 def _is_candidate(path: str) -> bool:
     name = path.lower()
+    if "/g_tau" in name or "/g-tau" in name or re.search(r"/g[^/]*_tau(?:$|/)", name):
+        return False
     if _path_is_mesh(name):
         return False
     return (
