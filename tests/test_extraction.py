@@ -339,6 +339,37 @@ def test_normalized_output_is_idempotent_and_separates_identifiers(
         write_normalized_hdf5(extraction, output, {"different": True})
 
 
+def test_normalized_output_derives_run_and_verified_mesh_state(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "raw" / "SVO" / "SVO_beta40.h5"
+    source.parent.mkdir(parents=True)
+    iw = np.array([1j * (2 * n + 1) * np.pi / 40.0 for n in range(2050)])
+    with h5py.File(source, "w") as handle:
+        dmft = handle.create_group("dmft_output/G_iw/down_0")
+        dmft.create_dataset("data", data=np.zeros((2050, 1, 1, 2)))
+        dmft["data"].attrs["__complex__"] = 1
+        mesh = dmft.create_group("mesh")
+        domain = mesh.create_group("domain")
+        domain.create_dataset("beta", data=np.float64(40.0))
+        domain.create_dataset("statistic", data="F", dtype=h5py.string_dtype())
+        mesh.create_dataset("size", data=np.int64(2050))
+        mesh.create_dataset("positive_freq_only", data=np.int32(0))
+
+    extraction = read_hdf5_file(source, tmp_path / "raw")
+    output = tmp_path / "processed" / "arrays" / "SVO" / "SVO_beta40.h5"
+    _, result = write_normalized_hdf5(extraction, output)
+
+    assert result["run_id"] == "SVO/SVO_beta40.h5"
+    assert result["physical_state_id"] == "material=SVO,beta=40"
+    with h5py.File(output, "r") as handle:
+        assert bool(handle.attrs["run_id_explicit"]) is True
+        assert bool(handle.attrs["physical_state_id_explicit"]) is True
+        assert handle.attrs["material"] == "SVO"
+        assert handle.attrs["beta"] == 40.0
+        assert handle.attrs["parameter_block"] == "beta=40"
+
+
 def test_failed_extraction_is_reported_without_silently_skipping(
     tmp_path: Path,
 ) -> None:
