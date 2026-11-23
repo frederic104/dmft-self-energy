@@ -217,7 +217,15 @@ def test_triqs_blockgf_last_axis_complex_without_mesh_vector(
 
     result = read_hdf5_file(path)
 
-    assert len(result.meshes) == 0
+    assert len(result.meshes) == 1
+    mesh = result.meshes[0]
+    assert mesh.source_path == "/dmft_output/G_iw/down_0/mesh"
+    assert mesh.attributes["mesh_format"] == "TRIQS MeshImFreq"
+    assert mesh.attributes["reconstructed"] is True
+    assert mesh.values.shape == (2050,)
+    assert np.isclose(mesh.values[0].imag, -(2049.0 * np.pi / 40.0))
+    assert np.isclose(mesh.values[-1].imag, (2049.0 * np.pi / 40.0))
+    assert np.isclose(mesh.values[1025].imag, np.pi / 40.0)
     assert len(result.arrays) == 1
     candidate = result.arrays[0]
     assert candidate.source_path == "/dmft_output/G_iw/down_0/data"
@@ -225,8 +233,8 @@ def test_triqs_blockgf_last_axis_complex_without_mesh_vector(
     assert np.iscomplexobj(candidate.values)
     assert np.all(candidate.values.real == 1.0)
     assert np.all(candidate.values.imag == 2.0)
-    assert candidate.frequency_mesh is None
-    assert candidate.frequency_axis is None
+    assert candidate.frequency_mesh is mesh
+    assert candidate.frequency_axis == 0
 
 
 def test_shape_mismatch_raises_explicit_error(tmp_path: Path) -> None:

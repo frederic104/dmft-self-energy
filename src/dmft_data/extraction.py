@@ -363,28 +363,117 @@ def _find_meshes(handle: h5py.File) -> tuple[FrequencyMesh, ...]:
     meshes: list[FrequencyMesh] = []
 
     def visit(name: str, object_: h5py.Group | h5py.Dataset) -> None:
-        if not isinstance(object_, h5py.Dataset) or not _path_is_mesh(f"/{name}"):
+        path = f"/{name}"
+        if isinstance(object_, h5py.Dataset):
+            if not _path_is_mesh(path):
+                return
+            if object_.ndim != 1:
+                return
+            attrs = _attributes(object_)
+            dtype = object_.dtype
+            if dtype.names or dtype.kind not in "iufc":
+                raise UnsupportedSchemaError(
+                    f"{path}: frequency mesh must be a numeric one-dimensional array"
+                )
+            values = np.asarray(object_[()])
+            if not np.all(np.isfinite(values)):
+                raise UnsupportedSchemaError(
+                    f"{path}: frequency mesh contains non-finite values"
+                )
+            candidate = FrequencyMesh(path, values, attrs)
+            if not any(
+                np.array_equal(existing.values, candidate.values)
+                for existing in meshes
+            ):
+                meshes.append(candidate)
             return
-        if object_.ndim == 0:
+
+        if not isinstance(object_, h5py.Group) or not _path_is_mesh(path):
             return
-        if object_.ndim != 1:
+        if "domain" in object_:
+            domain = object_["domain"]
+        else:
+            domain = object_
+        if not isinstance(domain, h5py.Group):
             return
-        attrs = _attributes(object_)
-        dtype = object_.dtype
-        if dtype.names or dtype.kind not in "iufc":
+
+        beta_object = domain.get("beta")
+        statistic_object = domain.get("statistic")
+        size_object = object_.get("size")
+        positive_object = object_.get("positive_freq_only")
+        if not all(isinstance(item, h5py.Dataset) for item in (
+            beta_object,
+            statistic_object,
+            size_object,
+            positive_object,
+        )):
+            return
+        if any(item.shape != () for item in (
+            beta_object,
+            statistic_object,
+            size_object,
+            positive_object,
+        )):
+            return
+
+        beta = float(np.asarray(beta_object[()]).item())
+        statistic = np.asarray(statistic_object[()])
+        if isinstance(statistic, np.ndarray):
+            statistic = statistic.item()
+        if isinstance(statistic, bytes):
+            statistic = statistic.decode("utf-8", errors="replace")
+        size = int(np.asarray(size_object[()]).item())
+        positive_only = int(np.asarray(positive_object[()]).item()) == 1
+
+        if beta <= 0 or size < 1:
             raise UnsupportedSchemaError(
-                f"/{name}: frequency mesh must be a numeric one-dimensional array"
+                f"{path}: invalid TRIQS MeshImFreq metadata"
             )
-        values = np.asarray(object_[()])
-        if values.ndim != 1:
+
+        statistic_text = str(statistic).upper()
+        fermion = statistic_text.startswith(("F", "FERMI"))
+        if positive_only:
+            n_iw = size
+            indices = np.arange(n_iw, dtype=np.int64)
+            total_size = n_iw
+        elif fermion:
+            n_iw = (size + 1) // 2
+            indices = np.arange(-n_iw, n_iw, dtype=np.int64)
+            total_size = size
+        else:
+            n_iw = (size + 1) // 2
+            indices = np.arange(-n_iw + 1, n_iw, dtype=np.int64)
+            total_size = size
+
+        if indices.size != total_size:
             raise UnsupportedSchemaError(
-                f"/{name}: frequency mesh must be one-dimensional, got shape {values.shape}"
+                f"{path}: mesh size {size} is inconsistent with "
+                f"{statistic_text} TRIQS metadata"
             )
+        if fermion:
+            values = 1j * (2 * indices + 1) * np.pi / beta
+        else:
+            values = 1j * 2 * indices * np.pi / beta
         if not np.all(np.isfinite(values)):
             raise UnsupportedSchemaError(
-                f"/{name}: frequency mesh contains non-finite values"
+                f"{path}: reconstructed frequency mesh contains non-finite values"
             )
-        meshes.append(FrequencyMesh(f"/{name}", values, attrs))
+
+        attrs = _attributes(object_)
+        attrs.update({
+            "mesh_format": "TRIQS MeshImFreq",
+            "reconstructed": True,
+            "beta": beta,
+            "statistic": statistic_text,
+            "size": size,
+            "positive_freq_only": positive_only,
+        })
+        candidate = FrequencyMesh(path, values, attrs)
+        if not any(
+            np.array_equal(existing.values, candidate.values)
+            for existing in meshes
+        ):
+            meshes.append(candidate)
 
     handle.visititems(visit)
     return tuple(meshes)
