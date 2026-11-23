@@ -29,7 +29,10 @@ dataset:
   splits:
     minimum_physical_states: 3
 
-  frequency_windows: []
+  frequency_windows:
+    - name: positive_low_frequency_64
+      count: 64
+      positive_frequency: true
 
 extraction:
   preserve_original_mesh: true
