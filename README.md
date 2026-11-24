@@ -112,6 +112,18 @@ causality, or spectral reconstruction.
 The commands will be enabled as the corresponding
 modules are implemented.
 
+### HDF5 storage diagnostics
+
+`scripts/07_classify_hdf5_runs.py` compares final `G_iw` and `Sigma_iw`
+blocks with every stored iteration. It reports storage equality and numerical
+differences, including a configurable low-positive-Matsubara-frequency RMS
+(`--low-frequency-count`, default 10). It is a storage/consistency diagnostic:
+it does not establish DMFT convergence, and all outputs retain
+`convergence_status: "not_assessed"` and `primary_target_candidate: false`.
+Paths under `beta-variation` are only marked `parameter_variation_candidate`
+pending metadata review. Warmup settings, iteration records, and spin/orbital
+blocks are not independent physical states.
+
 ## Reproducibility
 
 All extraction settings, source checksums,

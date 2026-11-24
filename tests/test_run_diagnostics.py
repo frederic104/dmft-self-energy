@@ -1,4 +1,4 @@
-"""Tests for run-level HDF5 classification."""
+"""Tests for storage-only run-level HDF5 diagnostics."""
 
 from pathlib import Path
 
@@ -8,69 +8,99 @@ import numpy as np
 from dmft_data.run_diagnostics import classify_hdf5_run, classify_hdf5_runs
 
 
-def _write_run(
-    path: Path,
-    mismatch: bool = False,
-    complex_marker: int | str = 1,
-) -> None:
+def _raw(value: float) -> np.ndarray:
+    data = np.zeros((8, 1, 1, 2), dtype=np.float64)
+    data[..., 0] = value
+    data[..., 1] = 2.0
+    return data
+
+
+def _write_run(path: Path, final_source: int | None) -> None:
+    """Write G/Sigma iterations; ``None`` makes final match no iteration."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    raw = np.zeros((2050, 1, 1, 2), dtype=np.float64)
-    raw[..., 0] = 1.0
-    raw[..., 1] = 2.0
     with h5py.File(path, "w") as handle:
         dmft = handle.create_group("dmft_output")
-        for block_name in ("down_0", "up_0"):
-            for quantity in ("G", "Sigma"):
-                final = dmft.require_group(f"{quantity}_iw")
-                final_block = final.create_group(block_name)
-                final_data = final_block.create_dataset("data", data=raw)
-                final_data.attrs["__complex__"] = complex_marker
-
-                iteration = dmft.require_group(f"{quantity}-15")
-                iteration_block = iteration.create_group(block_name)
-                iteration_raw = raw.copy()
-                if mismatch:
-                    iteration_raw[..., 0] += 1.0
-                iteration_data = iteration_block.create_dataset(
-                    "data",
-                    data=iteration_raw,
+        for quantity in ("G", "Sigma"):
+            for iteration, value in ((3, 3.0), (15, 15.0)):
+                data = dmft.create_dataset(
+                    f"{quantity}-{iteration}/down_0/data", data=_raw(value)
                 )
-                iteration_data.attrs["__complex__"] = complex_marker
-
+                data.attrs["__complex__"] = "1"
+            final_value = 99.0 if final_source is None else float(final_source)
+            final = dmft.create_dataset(
+                f"{quantity}_iw/down_0/data", data=_raw(final_value)
+            )
+            final.attrs["__complex__"] = "1"
+            dmft.create_dataset(f"{quantity}_iw/block_names/0", data="down_0")
         mesh = dmft.create_group("G_iw/down_0/mesh")
-        domain = mesh.create_group("domain")
-        domain.create_dataset("beta", data=np.float64(40.0))
-        dmft.create_dataset("iterations", data=np.int64(15))
+        mesh.create_dataset("positive_freq_only", data=np.int32(0))
+        mesh.create_group("domain").create_dataset("beta", data=np.float64(40.0))
 
 
-def test_classifies_equivalent_and_mismatched_runs(tmp_path: Path) -> None:
+def test_final_equals_last_iteration_with_string_complex_marker(tmp_path: Path) -> None:
     root = tmp_path / "raw"
-    equivalent = root / "SNO" / "SNO_beta40_nwarmup150000.h5"
-    mismatch = root / "BVO" / "BVO_beta40_nwarmup100000.h5"
-    _write_run(equivalent)
-    _write_run(mismatch, mismatch=True)
+    path = root / "SNO" / "SNO_beta40_nwarmup150000.h5"
+    _write_run(path, final_source=15)
 
-    equivalent_row = classify_hdf5_run(equivalent, root)
-    mismatch_row = classify_hdf5_run(mismatch, root)
+    row = classify_hdf5_run(path, root, low_frequency_count=2)
 
-    assert equivalent_row["run_status"] == "extracted_final_equivalent"
-    assert equivalent_row["primary_target_candidate"] is True
-    assert equivalent_row["mesh_status"] == "unresolved"
-    assert equivalent_row["convergence_status"] == "not_assessed"
-    assert mismatch_row["run_status"] == "final_iteration_mismatch"
-    assert mismatch_row["primary_target_candidate"] is False
+    assert row["run_status"] == "final_matches_last_iteration"
+    assert row["convergence_status"] == "not_assessed"
+    assert row["primary_target_candidate"] is False
+    block = row["G_iw_storage"]["blocks"][0]
+    assert block["numerical_last_iteration"] == 15
+    assert block["closest_stored_iteration"] == 15
+    assert block["exact_match_iterations"] == [15]
+    assert [entry["iteration"] for entry in block["iteration_comparisons"]] == [3, 15]
+    assert block["closest_stored_iteration_metrics"]["max_abs"] == 0.0
+    assert block["closest_stored_iteration_metrics"]["relative_rms"] == 0.0
+    assert block["low_frequency_selection"]["requested_positive_frequency_count"] == 2
 
 
-def test_writes_run_diagnostics_reports(tmp_path: Path) -> None:
+def test_final_equals_earlier_iteration(tmp_path: Path) -> None:
+    root = tmp_path / "raw"
+    path = root / "BVO" / "BVO_beta40_nwarmup100000.h5"
+    _write_run(path, final_source=3)
+
+    row = classify_hdf5_run(path, root)
+
+    assert row["run_status"] == "final_matches_earlier_iteration"
+    block = row["Sigma_iw_storage"]["blocks"][0]
+    assert block["closest_stored_iteration"] == 3
+    assert block["exact_match_iterations"] == [3]
+    assert block["last_iteration_comparison"]["iteration"] == 15
+    assert block["last_iteration_comparison"]["rms"] > 0
+
+
+def test_final_matches_no_stored_iteration(tmp_path: Path) -> None:
+    root = tmp_path / "raw"
+    path = root / "BVO" / "BVO_beta40_nwarmup100000.h5"
+    _write_run(path, final_source=None)
+
+    row = classify_hdf5_run(path, root)
+
+    assert row["run_status"] == "final_matches_no_stored_iteration"
+    block = row["G_iw_storage"]["blocks"][0]
+    assert block["exact_match_iterations"] == []
+    assert block["closest_stored_iteration"] == 15
+    assert block["closest_stored_iteration_metrics"]["mean_abs"] > 0
+    assert block["relative_rms_floor"] == 1e-12
+
+
+def test_beta_variation_is_parameter_candidate_and_reports_written_files(
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "raw"
     path = root / "SNO" / "beta-variation" / "SNO_beta20_nwarmup150000.h5"
-    _write_run(path)
+    _write_run(path, final_source=15)
 
-    summary = classify_hdf5_runs(root, tmp_path / "reports")
+    row = classify_hdf5_run(path, root)
+    summary = classify_hdf5_runs(root, tmp_path / "reports", low_frequency_count=3)
 
+    assert row["parameter_variation_candidate"] is True
+    assert row["run_status"] == "final_matches_last_iteration"
     assert summary["file_count"] == 1
-    assert summary["files_with_verified_mesh"] == 0
-    assert summary["convergence_status"] == "not_assessed"
+    assert summary["diagnostic_scope"] == "storage_consistency_not_dmft_convergence"
     assert (tmp_path / "reports" / "run_diagnostics.json").is_file()
     assert (tmp_path / "reports" / "run_diagnostics.csv").is_file()
 
@@ -78,8 +108,8 @@ def test_writes_run_diagnostics_reports(tmp_path: Path) -> None:
 def test_classifies_string_complex_marker(tmp_path: Path) -> None:
     root = tmp_path / "raw"
     path = root / "SVO" / "SVO_beta40.h5"
-    _write_run(path, complex_marker="1")
+    _write_run(path, final_source=15)
 
     row = classify_hdf5_run(path, root)
 
-    assert row["run_status"] == "extracted_final_equivalent"
+    assert row["run_status"] == "final_matches_last_iteration"
