@@ -1,4 +1,4 @@
-"""Create run-level HDF5 diagnostics without inventing physical conclusions."""
+"""Create HDF5 storage-consistency diagnostics, not convergence classifications."""
 
 from __future__ import annotations
 
@@ -21,10 +21,23 @@ def main() -> None:
         type=Path,
         default=Path("laptop-results/run_diagnostics"),
     )
+    parser.add_argument(
+        "--low-frequency-count",
+        type=int,
+        default=10,
+        help=(
+            "Number of lowest positive Matsubara entries used for relative RMS "
+            "reporting (default: 10)."
+        ),
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
 
-    summary = classify_hdf5_runs(args.source.resolve(), args.output.resolve())
+    summary = classify_hdf5_runs(
+        args.source.resolve(),
+        args.output.resolve(),
+        low_frequency_count=args.low_frequency_count,
+    )
     LOGGER.info(
         "Classified %d HDF5 runs; verified_mesh_files=%d",
         summary["file_count"],

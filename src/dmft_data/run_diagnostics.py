@@ -1,4 +1,8 @@
-"""Run-level HDF5 diagnostics for data validation."""
+"""Storage-consistency diagnostics for DMFT-style HDF5 files.
+
+These checks compare final arrays with stored iteration arrays. They do not
+inspect residuals or solver logs and are not a DMFT convergence criterion.
+"""
 
 from __future__ import annotations
 
@@ -15,8 +19,12 @@ import numpy as np
 from .extraction import read_hdf5_file
 
 
+DEFAULT_RELATIVE_RMS_FLOOR = 1e-12
+DEFAULT_LOW_FREQUENCY_COUNT = 10
+
+
 def sha256_file(path: Path) -> str:
-    """Return a file SHA-256 checksum."""
+    """Return a file SHA-256 checksum without loading it all into memory."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         while chunk := handle.read(1024 * 1024):
@@ -26,151 +34,222 @@ def sha256_file(path: Path) -> str:
 
 def _iteration_numbers(dmft: h5py.Group, prefix: str) -> list[int]:
     pattern = re.compile(rf"^{re.escape(prefix)}-(\d+)$")
-    numbers = []
-    for name in dmft.keys():
-        match = pattern.match(name)
-        if match:
-            numbers.append(int(match.group(1)))
-    return sorted(set(numbers))
+    return sorted({int(m.group(1)) for n in dmft for m in [pattern.match(n)] if m})
 
 
 def _mesh_metadata(dmft: h5py.Group) -> dict[str, Any]:
-    for name, obj in dmft.items():
-        if not isinstance(obj, h5py.Group) or "-" not in name:
+    for obj in dmft.values():
+        if not isinstance(obj, h5py.Group):
             continue
-        candidates = list(obj.get("down_0/mesh", {}).keys()) if "down_0" in obj else []
-        del candidates
         mesh = obj.get("down_0/mesh")
-        if isinstance(mesh, h5py.Group):
-            metadata: dict[str, Any] = {}
-            for key in ("beta", "positive_freq_only", "size"):
-                dataset = mesh.get(f"domain/{key}") if key == "beta" else mesh.get(key)
-                if isinstance(dataset, h5py.Dataset) and dataset.shape == ():
-                    value = dataset[()]
-                    if isinstance(value, bytes):
-                        value = value.decode("utf-8", errors="replace")
-                    metadata[key] = value.item() if isinstance(value, np.generic) else value
-            statistic = mesh.get("domain/statistic")
-            if isinstance(statistic, h5py.Dataset) and statistic.shape == ():
-                try:
-                    value = statistic[()]
-                    if isinstance(value, bytes):
-                        value = value.decode("utf-8", errors="replace")
-                    metadata["statistic"] = value
-                except (TypeError, ValueError):
-                    metadata["statistic"] = "unreadable"
-            if metadata:
-                return metadata
+        if not isinstance(mesh, h5py.Group):
+            continue
+        result: dict[str, Any] = {}
+        for key in ("beta", "positive_freq_only", "size"):
+            value = mesh.get(f"domain/{key}" if key == "beta" else key)
+            if isinstance(value, h5py.Dataset) and value.shape == ():
+                raw = value[()]
+                if isinstance(raw, bytes):
+                    raw = raw.decode("utf-8", errors="replace")
+                result[key] = raw.item() if isinstance(raw, np.generic) else raw
+        if result:
+            return result
     return {}
 
 
 def _complex_payload(dataset: h5py.Dataset) -> np.ndarray | None:
     raw = np.asarray(dataset[()])
-    if (
-        dataset.attrs.get("__complex__", 0) == 1
-        or dataset.attrs.get("complex", 0) == 1
-    ) and raw.ndim >= 1:
-        if raw.shape[-1] == 2:
-            return raw[..., 0] + 1j * raw[..., 1]
+    marker = dataset.attrs.get("__complex__", dataset.attrs.get("complex", 0))
+    if isinstance(marker, bytes):
+        marker = marker.decode("utf-8", errors="replace")
+    if str(marker) == "1" and raw.ndim >= 1 and raw.shape[-1] == 2:
+        return raw[..., 0] + 1j * raw[..., 1]
     if raw.ndim >= 1 and raw.shape[-1] == 2 and raw.dtype.kind in "iuf":
         return raw[..., 0] + 1j * raw[..., 1]
-    if dataset.dtype.kind == "c":
-        return raw
-    return None
+    return raw if dataset.dtype.kind == "c" else None
 
 
-def _final_equivalence(
-    dmft: h5py.Group,
-    quantity: str,
-    iterations: list[int],
-) -> dict[str, Any]:
-    final = dmft.get(f"{quantity}_iw")
-    if not iterations or not isinstance(final, h5py.Group):
-        return {
-            "available": False,
-            "last_iteration": iterations[-1] if iterations else None,
-            "blocks": [],
-            "reason": (
-                "missing_iteration_groups"
-                if not iterations
-                else "missing_final_quantity"
-            ),
-        }
-
-    last = iterations[-1]
-    block_comparisons = []
-    missing_blocks = []
-    shape_mismatches = []
-    unsupported_payloads = []
-    for block_name, block in final.items():
-        if not isinstance(block, h5py.Group):
-            continue
-        final_dataset = block.get("data")
-        iteration_dataset = dmft.get(f"{quantity}-{last}/{block_name}/data")
-        if not isinstance(final_dataset, h5py.Dataset):
-            missing_blocks.append(block_name)
-            continue
-        if not isinstance(iteration_dataset, h5py.Dataset):
-            missing_blocks.append(block_name)
-            continue
-
-        final_values = _complex_payload(final_dataset)
-        iteration_values = _complex_payload(iteration_dataset)
-        if final_values is None or iteration_values is None:
-            unsupported_payloads.append(block_name)
-            continue
-        if final_values.shape != iteration_values.shape:
-            shape_mismatches.append({
-                "block": block_name,
-                "final_shape": list(final_values.shape),
-                "iteration_shape": list(iteration_values.shape),
-            })
-            continue
-
-        difference = np.abs(final_values - iteration_values)
-        block_comparisons.append({
-            "block": block_name,
-            "exact": bool(np.array_equal(final_values, iteration_values)),
-            "max_abs": float(difference.max()),
-            "mean_abs": float(difference.mean()),
-            "rms": float(np.sqrt(np.mean(difference ** 2))),
-        })
-
+def _physical_blocks(container: h5py.Group) -> dict[str, h5py.Dataset]:
+    """Return blocks only when the group has a physical ``data`` dataset."""
     return {
-        "available": bool(block_comparisons),
-        "last_iteration": last,
-        "blocks": block_comparisons,
-        "reason": None if block_comparisons else "no_comparable_blocks",
-        "missing_blocks": missing_blocks,
-        "shape_mismatches": shape_mismatches,
-        "unsupported_payloads": unsupported_payloads,
+        name: data for name, block in container.items()
+        if isinstance(block, h5py.Group)
+        and isinstance(data := block.get("data"), h5py.Dataset)
     }
 
 
-def classify_hdf5_run(
-    path: str | Path,
-    source_root: str | Path,
+def _positive_frequency_indices(
+    block: h5py.Group, axis_length: int, count: int
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Select first positive entries using the TRIQS BlockGf axis-0 convention."""
+    positive_only = False
+    mesh = block.get("mesh")
+    if isinstance(mesh, h5py.Group):
+        flag = mesh.get("positive_freq_only")
+        if isinstance(flag, h5py.Dataset) and flag.shape == ():
+            positive_only = bool(flag[()])
+    start = 0 if positive_only else axis_length // 2
+    stop = min(start + count, axis_length)
+    return np.arange(start, stop), {
+        "frequency_axis": 0,
+        "positive_freq_only": positive_only,
+        "requested_positive_frequency_count": count,
+        "selected_indices": [int(start), int(stop)],
+        "selection_rule": "first_positive_entries_on_triqs_axis_0",
+    }
+
+
+def _metrics(
+    final: np.ndarray, candidate: np.ndarray, low_indices: np.ndarray, floor: float
+) -> dict[str, float | None]:
+    difference = np.abs(final - candidate)
+    rms = float(np.sqrt(np.mean(difference**2)))
+    reference_rms = float(np.sqrt(np.mean(np.abs(final) ** 2)))
+    result: dict[str, float | None] = {
+        "max_abs": float(difference.max()),
+        "mean_abs": float(difference.mean()),
+        "rms": rms,
+        "relative_rms": rms / max(reference_rms, floor),
+    }
+    if low_indices.size:
+        low_difference = difference[low_indices]
+        low_reference = np.abs(final[low_indices])
+        low_rms = float(np.sqrt(np.mean(low_difference**2)))
+        result["low_frequency_relative_rms"] = low_rms / max(
+            float(np.sqrt(np.mean(low_reference**2))), floor
+        )
+    else:
+        result["low_frequency_relative_rms"] = None
+    return result
+
+
+def _final_equivalence(
+    dmft: h5py.Group, quantity: str, iterations: list[int], *,
+    low_frequency_count: int, relative_rms_floor: float,
 ) -> dict[str, Any]:
-    """Classify one HDF5 run without convergence or mesh reconstruction."""
-    source = Path(path)
-    root = Path(source_root)
+    """Compare every final physical block to every available stored iteration."""
+    final_group = dmft.get(f"{quantity}_iw")
+    last = iterations[-1] if iterations else None
+    if not isinstance(final_group, h5py.Group):
+        return {
+            "status": "final_quantity_unavailable",
+            "numerical_last_iteration": last,
+            "blocks": [],
+            "reason": "missing_final_quantity",
+        }
+    final_blocks = _physical_blocks(final_group)
+    if not final_blocks:
+        return {
+            "status": "final_quantity_unavailable",
+            "numerical_last_iteration": last,
+            "blocks": [],
+            "reason": "no_final_physical_data_blocks",
+        }
+    if not iterations:
+        return {"status": "storage_schema_unresolved", "numerical_last_iteration": None,
+                "blocks": [], "reason": "missing_iteration_groups"}
+
+    blocks: list[dict[str, Any]] = []
+    unresolved = False
+    for name, final_dataset in final_blocks.items():
+        final = _complex_payload(final_dataset)
+        if final is None or final.ndim < 1:
+            blocks.append({"block": name, "reason": "unsupported_final_payload"})
+            unresolved = True
+            continue
+        indices, selection = _positive_frequency_indices(
+            final_group[name], final.shape[0], low_frequency_count
+        )
+        comparisons: list[dict[str, Any]] = []
+        unavailable: list[int] = []
+        for iteration in iterations:
+            candidate_dataset = dmft.get(f"{quantity}-{iteration}/{name}/data")
+            candidate = (
+                _complex_payload(candidate_dataset)
+                if isinstance(candidate_dataset, h5py.Dataset)
+                else None
+            )
+            if candidate is None or candidate.shape != final.shape:
+                unavailable.append(iteration)
+                continue
+            comparisons.append({
+                "iteration": iteration,
+                "exact": bool(np.array_equal(final, candidate)),
+                **_metrics(final, candidate, indices, relative_rms_floor),
+            })
+        if not comparisons:
+            blocks.append({"block": name, "reason": "no_comparable_stored_iteration"})
+            unresolved = True
+            continue
+        exact = [item["iteration"] for item in comparisons if item["exact"]]
+        closest = min(comparisons, key=lambda item: (item["rms"], item["iteration"]))
+        blocks.append({
+            "block": name,
+            "numerical_last_iteration": last,
+            "last_iteration_comparison": next(
+                (x for x in comparisons if x["iteration"] == last), None
+            ),
+            "closest_stored_iteration": closest["iteration"],
+            "closest_stored_iteration_metrics": closest,
+            "exact_match_iterations": exact,
+            "iteration_comparisons": comparisons,
+            "unavailable_iteration_comparisons": unavailable,
+            "low_frequency_selection": selection,
+            "relative_rms_floor": relative_rms_floor,
+        })
+        unresolved |= bool(unavailable)
+    comparable = [block for block in blocks if "iteration_comparisons" in block]
+    if unresolved or len(comparable) != len(final_blocks):
+        status = "storage_schema_unresolved"
+    elif all(last in block["exact_match_iterations"] for block in comparable):
+        status = "final_matches_last_iteration"
+    elif all(block["exact_match_iterations"] for block in comparable):
+        status = "final_matches_earlier_iteration"
+    else:
+        status = "final_matches_no_stored_iteration"
+    return {
+        "status": status,
+        "numerical_last_iteration": last,
+        "blocks": blocks,
+        "relative_rms_floor": relative_rms_floor,
+        "low_frequency_count": low_frequency_count,
+    }
+
+
+def _run_status(g_status: str, sigma_status: str) -> str:
+    statuses = {g_status, sigma_status}
+    for status in (
+        "storage_schema_unresolved",
+        "final_quantity_unavailable",
+        "final_matches_no_stored_iteration",
+        "final_matches_earlier_iteration",
+    ):
+        if status in statuses:
+            return status
+    return "final_matches_last_iteration"
+
+
+def classify_hdf5_run(
+    path: str | Path, source_root: str | Path, *,
+    low_frequency_count: int = DEFAULT_LOW_FREQUENCY_COUNT,
+    relative_rms_floor: float = DEFAULT_RELATIVE_RMS_FLOOR,
+) -> dict[str, Any]:
+    """Diagnose HDF5 storage semantics; do not assess physical convergence."""
+    if low_frequency_count <= 0 or relative_rms_floor <= 0:
+        raise ValueError("low_frequency_count and relative_rms_floor must be positive")
+    source, root = Path(path), Path(source_root)
     relative = source.relative_to(root).as_posix()
     extraction = read_hdf5_file(source, root)
-
     with h5py.File(source, "r") as handle:
         dmft = handle.get("dmft_output")
         if not isinstance(dmft, h5py.Group):
             dmft_metadata: dict[str, Any] = {}
             g_iterations = g0_iterations = sigma_iterations = []
-            g_equivalence = _final_equivalence(dmft, "G", []) if False else {
-                "available": False,
-                "last_iteration": None,
+            g_result = sigma_result = {
+                "status": "storage_schema_unresolved",
+                "numerical_last_iteration": None,
                 "blocks": [],
-            }
-            sigma_equivalence = {
-                "available": False,
-                "last_iteration": None,
-                "blocks": [],
+                "reason": "missing_dmft_output",
             }
             dmft_status = "missing_dmft_output"
         else:
@@ -178,121 +257,94 @@ def classify_hdf5_run(
             g_iterations = _iteration_numbers(dmft, "G")
             g0_iterations = _iteration_numbers(dmft, "G0")
             sigma_iterations = _iteration_numbers(dmft, "Sigma")
-            g_equivalence = _final_equivalence(dmft, "G", g_iterations)
-            sigma_equivalence = _final_equivalence(dmft, "Sigma", sigma_iterations)
+            g_result = _final_equivalence(
+                dmft, "G", g_iterations,
+                low_frequency_count=low_frequency_count,
+                relative_rms_floor=relative_rms_floor,
+            )
+            sigma_result = _final_equivalence(
+                dmft, "Sigma", sigma_iterations,
+                low_frequency_count=low_frequency_count,
+                relative_rms_floor=relative_rms_floor,
+            )
             dmft_status = "present"
-
-    material = relative.split("/", 1)[0] if "/" in relative else "unknown"
-    warmup_match = re.search(r"nwarmup(\d+)", source.stem)
-    warmup = int(warmup_match.group(1)) if warmup_match else None
-    beta_variation = "/beta-variation/" in f"/{relative}"
-
-    g_mismatch = g_equivalence["available"] and any(
-        not block["exact"] for block in g_equivalence["blocks"]
-    )
-    sigma_mismatch = sigma_equivalence["available"] and any(
-        not block["exact"] for block in sigma_equivalence["blocks"]
-    )
-
-    if g_mismatch or sigma_mismatch:
-        run_status = "final_iteration_mismatch"
-    elif beta_variation:
-        run_status = "beta_variation_auxiliary"
-    elif not g_equivalence["available"] or not sigma_equivalence["available"]:
-        run_status = "final_quantity_unavailable"
-    else:
-        run_status = "extracted_final_equivalent"
-
+    warmup = re.search(r"nwarmup(\d+)", source.stem)
     return {
-        "relative_source_path": relative,
-        "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
-        "material": material,
-        "nwarmup": warmup,
-        "beta_variation": beta_variation,
+        "relative_source_path": relative, "sha256": sha256_file(source),
+        "material": relative.split("/", 1)[0] if "/" in relative else "unknown",
+        "nwarmup": int(warmup.group(1)) if warmup else None,
+        "parameter_variation_candidate": "/beta-variation/" in f"/{relative}",
         "mesh_metadata": dmft_metadata,
-        "mesh_status": "verified_1d_mesh_present" if extraction.meshes else "unresolved",
-        "mesh_count": len(extraction.meshes),
-        "array_count": len(extraction.arrays),
-        "dmft_status": dmft_status,
-        "G_iterations": g_iterations,
-        "G0_iterations": g0_iterations,
-        "Sigma_iterations": sigma_iterations,
-        "G_iw_last": g_equivalence,
-        "Sigma_iw_last": sigma_equivalence,
+        "mesh_status": (
+            "verified_1d_mesh_present" if extraction.meshes else "unresolved"
+        ),
+        "mesh_count": len(extraction.meshes), "array_count": len(extraction.arrays),
+        "dmft_status": dmft_status, "G_iterations": g_iterations,
+        "G0_iterations": g0_iterations, "Sigma_iterations": sigma_iterations,
+        "G_iw_storage": g_result, "Sigma_iw_storage": sigma_result,
         "convergence_status": "not_assessed",
-        "run_status": run_status,
-        "primary_target_candidate": run_status
-        == "extracted_final_equivalent",
+        "run_status": _run_status(g_result["status"], sigma_result["status"]),
+        "primary_target_candidate": False,
     }
 
 
 def classify_hdf5_runs(
-    source_root: str | Path,
-    output_dir: str | Path,
+    source_root: str | Path, output_dir: str | Path, *,
+    low_frequency_count: int = DEFAULT_LOW_FREQUENCY_COUNT,
+    relative_rms_floor: float = DEFAULT_RELATIVE_RMS_FLOOR,
 ) -> dict[str, Any]:
-    """Classify all HDF5 runs and write machine-readable reports."""
-    root = Path(source_root).resolve()
-    output = Path(output_dir).resolve()
+    """Write storage-semantic reports for HDF5 runs below ``source_root``."""
+    root, output = Path(source_root).resolve(), Path(output_dir).resolve()
     output.mkdir(parents=True, exist_ok=True)
-    extensions = {".h5", ".hdf5"}
     sources = sorted(
-        path
-        for path in root.rglob("*")
-        if path.is_file() and path.suffix.lower() in extensions
+        p for p in root.rglob("*")
+        if p.is_file() and p.suffix.lower() in {".h5", ".hdf5"}
     )
-    rows = [classify_hdf5_run(path, root) for path in sources]
-
-    per_file_dir = output / "per_file"
-    per_file_dir.mkdir(parents=True, exist_ok=True)
-    for row in rows:
-        report_path = per_file_dir / Path(row["relative_source_path"]).with_suffix(".json")
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(
-            json.dumps(row, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
+    rows = [
+        classify_hdf5_run(
+            p, root, low_frequency_count=low_frequency_count,
+            relative_rms_floor=relative_rms_floor,
         )
-
-    aggregate_path = output / "run_diagnostics.json"
-    aggregate_path.write_text(
-        json.dumps(rows, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-
-    status_counts: dict[str, int] = {}
+        for p in sources
+    ]
+    per_file = output / "per_file"
+    per_file.mkdir(parents=True, exist_ok=True)
     for row in rows:
-        status = row["run_status"]
-        status_counts[status] = status_counts.get(status, 0) + 1
+        target = per_file / Path(row["relative_source_path"]).with_suffix(".json")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps(row, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+    (output / "run_diagnostics.json").write_text(
+        json.dumps(rows, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row["run_status"]] = counts.get(row["run_status"], 0) + 1
     summary = {
         "source_root": str(root),
         "file_count": len(rows),
-        "run_status_counts": status_counts,
+        "run_status_counts": counts,
         "files_with_verified_mesh": sum(row["mesh_count"] > 0 for row in rows),
         "convergence_status": "not_assessed",
+        "diagnostic_scope": "storage_consistency_not_dmft_convergence",
+        "low_frequency_count": low_frequency_count,
+        "relative_rms_floor": relative_rms_floor,
     }
-    summary_path = output / "run_diagnostics_summary.json"
-    summary_path.write_text(
-        json.dumps(summary, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+    (output / "run_diagnostics_summary.json").write_text(
+        json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-
-    csv_path = output / "run_diagnostics.csv"
     fields = [
-        "relative_source_path",
-        "sha256",
-        "material",
-        "nwarmup",
-        "beta_variation",
-        "mesh_status",
-        "mesh_count",
-        "array_count",
-        "run_status",
-        "convergence_status",
+        "relative_source_path", "sha256", "material", "nwarmup",
+        "parameter_variation_candidate", "mesh_status", "mesh_count",
+        "array_count", "run_status", "convergence_status",
         "primary_target_candidate",
     ]
-    with csv_path.open("w", newline="", encoding="utf-8") as handle:
+    with (output / "run_diagnostics.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
         for row in rows:
             writer.writerow({field: row[field] for field in fields})
-
     return summary

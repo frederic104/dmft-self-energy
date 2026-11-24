@@ -62,6 +62,17 @@ def _path_is_mesh(path: str) -> bool:
     return any(term in name for term in terms)
 
 
+def is_complex_marker(value: Any) -> bool:
+    """Interpret scalar TRIQS complex markers, including string storage."""
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes"}
+    return value is True or value == 1
+
+
 def _classify_role(path: str, attrs: dict[str, Any]) -> str:
     """Classify a name only when the path provides an explicit role hint."""
     name = path.lower()
@@ -266,7 +277,7 @@ def _reconstruct_complex(
             f"{dataset.name}: unsupported dtype {dataset.dtype}"
         )
 
-    if dataset.attrs.get("__complex__", 0) == 1:
+    if is_complex_marker(dataset.attrs.get("__complex__", 0)):
         raw = np.asarray(dataset[()])
         if raw.ndim < 1 or raw.shape[-1] != 2:
             raise ComplexRepresentationError(
