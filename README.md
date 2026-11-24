@@ -124,6 +124,11 @@ Paths under `beta-variation` are only marked `parameter_variation_candidate`
 pending metadata review. Warmup settings, iteration records, and spin/orbital
 blocks are not independent physical states.
 
+For a fail-closed raw-data provenance audit and target/split registry, see
+[research-readiness audit](docs/research_audit.md). This creates local JSON
+reports only; without independently supplied convergence evidence it selects
+no primary ML targets.
+
 ## Reproducibility
 
 All extraction settings, source checksums,
