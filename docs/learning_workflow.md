@@ -7,16 +7,6 @@ canonical HDF5 files first. Raw data remain unchanged.
 
 ## Ubuntu: install, inspect, prepare, train
 
-```bash
-conda activate physai
-cd /home/frederic104/projects/dmft-self-energy
-python -m pip install -e ".[dev,ml]"
-
-python -m dmft_data catalog \
-  --source data/raw/hdf5 \
-  --output data/metadata/run_review.json
-```
-
 The catalog is a local review template: block paths, original shapes and dtypes,
 and beta with HDF5 source paths. It reads metadata only and prints a short count.
 An existing review file is preserved; choose another output to repeat inspection.
