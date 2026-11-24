@@ -1,0 +1,27 @@
+# Copy to data/metadata/physics_review.yaml; record evidence before marking reviewed.
+# Defaults apply to ALL selected runs; use per_run overrides for differing conventions.
+definitions:
+  energy_unit: {value: null, status: unresolved, evidence: null}  # eV, meV, Hartree
+  input_semantics: {value: null, status: unresolved, evidence: null}
+  target_semantics: {value: null, status: unresolved, evidence: null}
+  beta_unit: {value: null, status: unresolved, evidence: null}
+  basis: {value: null, status: unresolved, evidence: null}
+  chemical_potential: {value: null, status: unresolved, evidence: null}
+  double_counting: {value: null, status: unresolved, evidence: null}
+  interaction_U_J: {value: null, status: unresolved, evidence: null}
+  filling: {value: null, status: unresolved, evidence: null}
+  phase_and_symmetry: {value: null, status: unresolved, evidence: null}
+per_run: {}
+# No automatic matching of G0-1 with final Sigma. A requested Dyson check needs:
+# dyson_checks:
+#   - relative_source_path: MATERIAL/run.h5
+#     source_sha256: EXACT_RAW_FILE_SHA256
+#     weiss_path: /dmft_output/G0-5
+#     green_path: /dmft_output/G-5
+#     sigma_path: /dmft_output/Sigma-5
+#     weiss_semantics: dmft_weiss
+#     green_semantics: impurity_green
+#     sigma_semantics: impurity_self_energy
+#     sigma_convention: solver_without_double_counting_subtraction
+#     same_stage_evidence: reviewed solver code/log showing same pre/post-mixing stage
+dyson_checks: []

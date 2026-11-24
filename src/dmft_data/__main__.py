@@ -25,9 +25,14 @@ def main() -> None:
     listing.add_argument(
         "--output", type=Path, default=Path("data/metadata/run_review.json")
     )
-    for command in ("prepare", "train", "summary"):
+    for command in ("prepare", "train", "summary", "diagnose"):
         child = sub.add_parser(command)
         child.add_argument("--config", type=Path, required=True)
+        if command == "diagnose":
+            child.add_argument("--definitions", type=Path)
+            child.add_argument("--output", type=Path)
+            child.add_argument("--raw-run", action="append", default=[])
+            child.add_argument("--raw-count", type=int)
     args = parser.parse_args()
     if args.command == "catalog":
         if args.output.exists():
@@ -49,6 +54,17 @@ def main() -> None:
             result["sample_count"],
             result["group_count"],
             len(result["excluded"]),
+        )
+    elif args.command == "diagnose":
+        from .physics import diagnose
+
+        result = diagnose(
+            config, root, args.definitions, args.output, args.raw_run, args.raw_count
+        )
+        LOGGER.info(
+            "physics diagnostics saved; unresolved definitions=%d; raw runs=%d",
+            len(result["unresolved_definitions"]),
+            len(result["raw_runs"]),
         )
     elif args.command == "summary":
         manifest = load_json(root / config["prepared"] / "manifest.json")

@@ -82,6 +82,11 @@ IDs, scoped convergence evidence, and verified input semantics. See
 [the workflow and evaluation protocol](docs/learning_workflow.md) for review
 format, grouping, model selection, output artifacts, and limitations.
 
+After training, `python -m dmft_data diagnose --config configs/experiment.yaml`
+bundles physics definitions, signed block errors and plots without retraining.
+See [physics definitions and diagnostics](docs/physics_diagnostics.md) for the
+review template and optional, explicitly selected raw-run/Dyson checks.
+
 ## Data Processing
 
 The local data directory is configured through

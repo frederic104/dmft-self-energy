@@ -252,7 +252,7 @@ def test_cli_prepare_and_train_from_external_cwd(tmp_path):
     config["models"] = [{"name": "mean"}]
     config_path = tmp_path / "experiment.yaml"
     config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
-    for command in ["prepare", "train", "summary"]:
+    for command in ["prepare", "train", "summary", "diagnose"]:
         result = subprocess.run(
             [sys.executable, "-m", "dmft_data", command, "--config", str(config_path)],
             cwd=tmp_path,
