@@ -70,6 +70,35 @@ not tail fits. A mean over the first 64 frequencies is not Sigma-infinity, and
 iteration plateaus do not certify physical convergence. Warmup variants are not
 independent random seeds or Monte Carlo error bars.
 
+## Reading large changes in stored iterations
+
+Each requested raw run additionally produces `raw_N_step_changes.png` and
+`raw_N_step_changes.csv`. The plot separates the frequency-constant real change,
+frequency-dependent real residual, and imaginary change between consecutive
+**stored** iteration numbers (gaps are preserved). A second panel shows each
+Sigma block's complex change, avoiding cancellation in mean diagonal curves.
+All quantities are native-unit RMS values; G and Sigma have different dimensions.
+Signed matrix offsets are retained in JSON and in JSON-encoded CSV cells.
+
+`summary.md` ranks the three largest adjacent Sigma changes descriptively and
+prints their components. No threshold is used to classify convergence/divergence.
+The decomposition is a numeric comparison, not extraction of Sigma-infinity,
+chemical-potential motion or double-counting correction.
+
+The JSON's `metadata_candidates` collects exact scalar/small-dataset or attribute
+name matches for mu, chemical potential, DC, mixing, restart, iteration, seed,
+solver and related settings. Original HDF5 paths and shapes are retained. Arrays
+with more than 16 entries are not read; text over 500 characters is explicitly
+marked truncated. Matching `u` is exact, not a substring match for `user`.
+Candidates may be unrelated or final-only values. Their presence does not link
+them to a particular DMFT step or establish a calculation event; absence does not
+prove a parameter was unused. If no time-resolved evidence exists, the author
+input/solver log is still needed to explain a change around iteration 8.
+
+The existing `diagnose --raw-run ...` command automatically includes these
+outputs. Use a fresh `--output`, e.g.
+`reports/local/experiments/exploratory_v1/physics_BVO_steps_v1`, when rerunning.
+
 ## Optional, evidence-scoped Dyson consistency
 
 The template includes a commented `dyson_checks` record. A check runs only for a
