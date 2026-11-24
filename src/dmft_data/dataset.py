@@ -69,9 +69,11 @@ def _is_verified_converged(
             continue
         if (
             record.get("status") == "verified_converged"
-            and bool(str(record.get("evidence_source", "")).strip())
+            and isinstance(record.get("evidence_source"), str)
+            and bool(record["evidence_source"].strip())
             and record.get("source_sha256") == source.attrs.get("source_sha256")
             and bool(record.get("source_sha256"))
+            and isinstance(record.get("verified_source_paths"), list)
             and dataset.attrs.get("source_path") in record.get("verified_source_paths", [])
         ):
             return True

@@ -230,3 +230,9 @@ def test_global_convergence_boolean_cannot_certify_a_collection(tmp_path: Path) 
     report = build_research_datasets(config, root)
     assert report["baseline"]["record_count"] == 0
     assert report["physics_constrained"]["record_count"] == 0
+    scoped = json.loads(_verification("run-A"))
+    scoped["runs"]["run-A"]["evidence_source"] = None
+    (metadata_dir / "convergence_verification.json").write_text(
+        json.dumps(scoped), encoding="utf-8"
+    )
+    assert build_research_datasets(config, root)["baseline"]["record_count"] == 0
