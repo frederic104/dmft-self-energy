@@ -20,9 +20,12 @@ Outputs are under the existing experiment's `physics_diagnostics/`:
   per-block errors, selected neighbor identities, and requested raw-run checks.
 - `block_metrics.csv`: one row per seed/test-group/block; metrics stay in native
   units, and signed offsets retain every matrix element.
+- `validation_plan.json`: ordered physics checks, evidence status and acceptance reasoning.
 - `seed_*_group_*.png`: Re/Im reference versus prediction, with signed errors on
   the actual positive Matsubara frequency axis. The plotted curves are diagonal
-  elements; numeric errors include all matrix elements.
+  elements; numeric errors include all matrix elements. Companion `_blocks`
+  figures resolve individual blocks. Figures also have vector `.pdf` exports
+  and `.caption.md` draft captions.
 
 Definition entries have `value`, `status` and `evidence`. Only `status: reviewed`
 with a nonempty evidence reference and a value counts as reviewed. Record the
@@ -58,8 +61,9 @@ python -m dmft_data diagnose --config configs/experiment.yaml \
 
 This verifies the raw checksum against preparation and compares final G/Sigma
 with each stored iteration on identical block/mesh layouts. It records exact
-matches and RMS changes to the previous stored iteration. A plot overlays mean
-diagonal Sigma trajectories. The numeric report retains all blocks. Within-run
+matches and RMS changes to the previous stored iteration. Trajectory panels
+resolve each block's diagonal Sigma, with iteration colorbar and dashed final
+payload. The numeric report retains all blocks. Within-run
 up/down differences are descriptive; paramagnetism, orbital degeneracy and
 cross-material orbital correspondence are not assumed. Missing/malformed
 quantities are recorded as raw-run failures, never silently treated as matches.
@@ -69,6 +73,35 @@ explicitly requests a wider positive-frequency range if present. These plots are
 not tail fits. A mean over the first 64 frequencies is not Sigma-infinity, and
 iteration plateaus do not certify physical convergence. Warmup variants are not
 independent random seeds or Monte Carlo error bars.
+
+## Reading large changes in stored iterations
+
+Each requested raw run additionally produces `raw_N_step_changes.png` and
+`raw_N_step_changes.csv`. The plot separates the frequency-constant real change,
+frequency-dependent real residual, and imaginary change between consecutive
+**stored** iteration numbers (gaps are preserved). A second panel shows each
+Sigma block's complex change, avoiding cancellation in mean diagonal curves.
+All quantities are native-unit RMS values; G and Sigma have different dimensions.
+Signed matrix offsets are retained in JSON and in JSON-encoded CSV cells.
+
+`summary.md` ranks the three largest adjacent Sigma changes descriptively and
+prints their components. No threshold is used to classify convergence/divergence.
+The decomposition is a numeric comparison, not extraction of Sigma-infinity,
+chemical-potential motion or double-counting correction.
+
+The JSON's `metadata_candidates` collects exact scalar/small-dataset or attribute
+name matches for mu, chemical potential, DC, mixing, restart, iteration, seed,
+solver and related settings. Original HDF5 paths and shapes are retained. Arrays
+with more than 16 entries are not read; text over 500 characters is explicitly
+marked truncated. Matching `u` is exact, not a substring match for `user`.
+Candidates may be unrelated or final-only values. Their presence does not link
+them to a particular DMFT step or establish a calculation event; absence does not
+prove a parameter was unused. If no time-resolved evidence exists, the author
+input/solver log is still needed to explain a change around iteration 8.
+
+The existing `diagnose --raw-run ...` command automatically includes these
+outputs. Use a fresh `--output`, e.g.
+`reports/local/experiments/exploratory_v1/physics_BVO_steps_v1`, when rerunning.
 
 ## Optional, evidence-scoped Dyson consistency
 
@@ -103,3 +136,8 @@ The necessary source conventions are described in the
 and [CTHYB moments guide](https://triqs.github.io/cthyb/latest/guide/high_freq_moments.html).
 [VASP EDIFF](https://vasp.at/wiki/index.php/EDIFF) is a total-energy iteration
 termination criterion and is not a self-energy prediction tolerance.
+
+The [physics validation protocol](physics_validation_protocol.md) describes
+the staged checks, energy-budget study, reference uncertainty requirements and
+paper-style figure conventions. Computed descriptive changes do not complete
+the deferred physical validations.

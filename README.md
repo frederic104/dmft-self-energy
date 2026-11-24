@@ -86,6 +86,9 @@ After training, `python -m dmft_data diagnose --config configs/experiment.yaml`
 bundles physics definitions, signed block errors and plots without retraining.
 See [physics definitions and diagnostics](docs/physics_diagnostics.md) for the
 review template and optional, explicitly selected raw-run/Dyson checks.
+The [physics validation protocol](docs/physics_validation_protocol.md) sets out
+the next reference, convergence and observable checks. Diagnostics include
+block-resolved PNG/PDF figures, caption drafts and a machine-readable check plan.
 
 ## Data Processing
 

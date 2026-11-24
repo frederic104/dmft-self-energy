@@ -11,8 +11,11 @@ import numpy as np
 import yaml
 
 from .hdf import read_quantity
+from .iteration_analysis import change_figure, metadata_candidates, write_changes_csv
 from .learning.data import load_json, write_json
+from .plotting import trajectory_figure
 from .provenance import sha256_file
+from .validation_protocol import validation_tasks
 
 DEFINITION_FIELDS = (
     "energy_unit",
@@ -110,47 +113,9 @@ def _nearest_groups(
 
 
 def _plot_prediction(path, omega, predicted, reference, scale, unit, labels):
-    import matplotlib
+    from .plotting import prediction_figure
 
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    fig, axes = plt.subplots(2, 2, figsize=(10, 6), sharex=True)
-    for block in range(len(reference)):
-        # Diagonal curves only for display; numerical metrics include all elements.
-        for orbital in range(reference.shape[1]):
-            ref = reference[block, orbital, orbital]
-            pred = predicted[block, orbital, orbital]
-            for row, component in enumerate((np.real, np.imag)):
-                color = f"C{block % 10}"
-                axes[row, 0].plot(
-                    omega,
-                    component(ref) * scale,
-                    alpha=0.7,
-                    color=color,
-                    label=f"{labels[block]}:{orbital}",
-                )
-                axes[row, 0].plot(
-                    omega, component(pred) * scale, "--", alpha=0.7, color=color
-                )
-                axes[row, 1].plot(
-                    omega, component(pred - ref) * scale, alpha=0.7, color=color
-                )
-    axes[0, 0].legend(fontsize=6, ncol=2)
-    axis_unit = "meV" if unit == "meV" else "native"
-    for row, name in enumerate(("Re", "Im")):
-        axes[row, 0].set_ylabel(f"{name} value [{axis_unit}]")
-        axes[row, 1].set_ylabel(f"{name} error [{axis_unit}]")
-        axes[row, 1].axhline(0, color="black", linewidth=0.5)
-    for ax in axes[-1]:
-        ax.set_xlabel(f"positive Matsubara omega [{axis_unit}]")
-    fig.suptitle(
-        "Solid: reference; dashed: prediction. Diagonal elements.\n"
-        f"Unit convention: {unit}"
-    )
-    fig.tight_layout()
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
+    prediction_figure(path, omega, predicted, reference, scale, unit, labels)
 
 
 def _same_layout(left, right):
@@ -164,14 +129,17 @@ def _same_layout(left, right):
 def inspect_raw(path: Path, count: int, output: Path, stem: str) -> dict:
     """Iteration trajectories and within-run spin differences; no convergence label."""
     rows, spin = [], []
+    block_changes = []
     curves = []
     with h5py.File(path, "r") as handle:
         dmft = handle.get("dmft_output")
         if not isinstance(dmft, h5py.Group):
             raise TypeError("Missing /dmft_output")
+        metadata = metadata_candidates(handle)
         for quantity in ("G", "Sigma"):
             final = read_quantity(handle, f"/dmft_output/{quantity}_iw", count)
             previous = None
+            previous_number = None
             names = sorted(
                 (int(m.group(1)), name)
                 for name in dmft
@@ -192,9 +160,26 @@ def inspect_raw(path: Path, count: int, output: Path, stem: str) -> dict:
                         "rms_to_previous": rms(iteration.values - previous)
                         if previous is not None
                         else None,
+                        "previous_stored_iteration": previous_number,
+                        "change_from_final": decompose(iteration.values, final.values),
+                        "change_from_previous": decompose(iteration.values, previous)
+                        if previous is not None
+                        else None,
                     }
                 )
+                if previous is not None:
+                    for index, block in enumerate(iteration.blocks):
+                        block_changes.append(
+                            {
+                                "quantity": quantity,
+                                "block": block,
+                                "from_iteration": previous_number,
+                                "to_iteration": number,
+                                **decompose(iteration.values[index], previous[index]),
+                            }
+                        )
                 previous = iteration.values
+                previous_number = number
                 if quantity == "Sigma":
                     curves.append((number, iteration))
             for index, block in enumerate(final.blocks):
@@ -211,29 +196,16 @@ def inspect_raw(path: Path, count: int, output: Path, stem: str) -> dict:
                             "interpretation": "descriptive_only_symmetry_not_assumed",
                         }
                     )
-    if curves:
-        import matplotlib
-
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-
-        fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-        for number, curve in curves:
-            # Each iteration displays mean diagonal Sigma; no spin symmetry inferred.
-            diagonal = np.diagonal(curve.values, axis1=1, axis2=2).mean(axis=(0, 2))
-            axes[0].plot(curve.mesh.imag, diagonal.real, label=str(number))
-            axes[1].plot(curve.mesh.imag, diagonal.imag)
-        axes[0].legend(title="iteration", fontsize=6, ncol=3)
-        for ax, component in zip(axes, ("Re", "Im")):
-            ax.set_xlabel("omega [native unit]")
-            ax.set_ylabel(f"mean diagonal {component} Sigma [native unit]")
-        fig.tight_layout()
-        fig.savefig(output / f"{stem}_iterations.png", dpi=150)
-        plt.close(fig)
+    trajectory_figure(output / f"{stem}_iterations.png", curves, final)
+    change_figure(output / f"{stem}_step_changes.png", rows, block_changes)
+    write_changes_csv(output / f"{stem}_step_changes.csv", block_changes)
     return {
         "source_sha256": sha256_file(path),
         "iteration_comparisons": rows,
         "spin_comparisons": spin,
+        "block_iteration_changes": block_changes,
+        "metadata_candidates": metadata,
+        "metadata_interpretation": "path/name evidence only; values do not establish restart, mixing, or physical convergence",
         "convergence_status": "not_assessed",
     }
 
@@ -430,6 +402,8 @@ def diagnose(
         ],
         "interpretation": "Oracle-centered errors use the reference and are not predictive performance. Window means are not Hartree moments. No universal energy tolerance applied.",
     }
+    report["validation_tasks"] = validation_tasks(report)
+    write_json(output / "validation_plan.json", report["validation_tasks"])
     write_json(output / "diagnostics.json", report)
     lines = [
         "# Physics diagnostic report",
@@ -466,7 +440,57 @@ def diagnose(
         "Total-energy SCF tolerances are not self-energy RMSE thresholds.",
         "See diagnostics.json for requested raw-run failures and deferred physical tests.",
     ]
-    lines += ["", "## Figures", ""]
+    lines += ["", "## Raw-run change review", ""]
+    for run in raw:
+        lines.append(f"### {run['relative_source_path']}")
+        if run.get("status") == "failed":
+            lines.append(f"\nFailed: {run['error']}\n")
+            continue
+        steps = sorted(
+            (
+                r
+                for r in run["iteration_comparisons"]
+                if r["quantity"] == "Sigma" and r["change_from_previous"] is not None
+            ),
+            key=lambda r: r["change_from_previous"]["complex_rmse"],
+            reverse=True,
+        )
+        lines += [
+            "",
+            "Largest stored Sigma changes (native units; descriptive ranking):",
+            "",
+        ]
+        for step in steps[:3]:
+            delta = step["change_from_previous"]
+            lines.append(
+                f"- {step['previous_stored_iteration']} -> {step['iteration']}: "
+                f"total={delta['complex_rmse']:.6g}, Re constant={delta['real_offset_rms']:.6g}, "
+                f"Re shape={delta['real_shape_rmse']:.6g}, Im={delta['imaginary_rmse']:.6g}."
+            )
+        lines += [
+            "",
+            (
+                f"Metadata candidates found: {len(run['metadata_candidates'])}. "
+                "See JSON for exact paths and values. Absence does not prove a parameter was absent from the calculation."
+            ),
+            "",
+        ]
+    lines += [
+        "",
+        "## Physics validation plan",
+        "",
+        "| Priority | Check | Evidence status |",
+        "|---|---|---|",
+    ]
+    for task in report["validation_tasks"]:
+        lines.append(f"| {task['priority']} | {task['check']} | {task['status']} |")
+    lines += [
+        "",
+        "Procedures and acceptance reasoning are in validation_plan.json; statuses are not convergence certificates.",
+        "",
+        "## Figures",
+        "",
+    ]
     for image in sorted(output.glob("*.png")):
         lines.append(f"![{image.stem}]({image.name})")
     (output / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")

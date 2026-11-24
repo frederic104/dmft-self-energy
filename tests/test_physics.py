@@ -33,6 +33,12 @@ def test_reports_and_plots_without_assuming_energy_units(tmp_path):
     assert report["nearest_groups"][0]["neighbors"]
     assert report["convergence_status"] == "not_assessed"
     assert (output / "block_metrics.csv").is_file()
+    assert (output / "validation_plan.json").is_file()
+    assert (output / "seed_3_group_0.pdf").is_file()
+    assert (output / "seed_3_group_0_blocks.pdf").is_file()
+    tasks = {t["check"]: t for t in report["validation_tasks"]}
+    assert tasks["DMFT_self_consistency"]["status"] == "not_assessed"
+    assert tasks["quantity_basis_energy_conventions"]["status"] == "unresolved"
     assert (output / "seed_3_group_0.png").stat().st_size > 1000
     assert "not predictive performance" in (output / "summary.md").read_text()
     with pytest.raises(FileExistsError):
