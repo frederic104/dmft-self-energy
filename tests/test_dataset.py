@@ -1,5 +1,6 @@
 """Tests for state-aware research-dataset construction."""
 
+import json
 from pathlib import Path
 
 import h5py
@@ -93,6 +94,25 @@ def _config(tmp_path: Path, minimum_states: int = 3) -> tuple[Path, Path]:
     return root, config
 
 
+def _verification(*run_ids: str) -> str:
+    return json.dumps(
+        {
+            "runs": {
+                run_id: {
+                    "status": "verified_converged",
+                    "evidence_source": "synthetic test only",
+                    "source_sha256": "a" * 64,
+                    "verified_source_paths": [
+                        "/dmft/iteration_4/Sigma",
+                        "/dmft/iteration_4/G0",
+                    ],
+                }
+                for run_id in run_ids
+            }
+        }
+    )
+
+
 def test_builds_converged_primary_and_blocked_splits(tmp_path: Path) -> None:
     root, config = _config(tmp_path)
     normalized = root / "data" / "processed" / "arrays"
@@ -110,12 +130,7 @@ def test_builds_converged_primary_and_blocked_splits(tmp_path: Path) -> None:
     metadata_dir = root / "data" / "metadata"
     metadata_dir.mkdir(parents=True)
     (metadata_dir / "convergence_verification.json").write_text(
-        """
-{
-  "converged_iterations": ["4"],
-  "convergence_verified": true
-}
-""".strip(),
+        _verification("run-0", "run-1", "run-2"),
         encoding="utf-8",
     )
 
@@ -131,10 +146,12 @@ def test_builds_converged_primary_and_blocked_splits(tmp_path: Path) -> None:
     assert report["baseline"]["record_count"] == 3
     assert report["physics_constrained"]["record_count"] == 6
     assert report["compatibility"]["record_count"] == 9
-    assert report["auxiliary"]["record_count"] == 0
+    assert report["auxiliary"]["record_count"] == 3
     assert len(report["derived"]) == 3
 
-    split_path = root / "data" / "processed" / "research_datasets" / "blocked_splits.json"
+    split_path = (
+        root / "data" / "processed" / "research_datasets" / "blocked_splits.json"
+    )
     splits = __import__("json").loads(split_path.read_text())
     assert splits["splits"]["material"]["status"] == "created"
     folds = splits["splits"]["material"]["folds"]
@@ -151,7 +168,7 @@ def test_insufficient_states_does_not_create_misleading_splits(tmp_path: Path) -
     metadata_dir = root / "data" / "metadata"
     metadata_dir.mkdir(parents=True)
     (metadata_dir / "convergence_verification.json").write_text(
-        '{"converged_iterations":["4"], "convergence_verified":true}',
+        _verification("run-a", "run-b"),
         encoding="utf-8",
     )
 
@@ -167,21 +184,21 @@ def test_derived_window_selects_first_positive_matsubara_frequencies(
 ) -> None:
     root, config = _config(tmp_path)
     config_data = yaml.safe_load(config.read_text(encoding="utf-8"))
-    config_data["dataset"]["frequency_windows"] = [{
-        "name": "positive_low_frequency",
-        "count": 2,
-        "positive_frequency": True,
-    }]
+    config_data["dataset"]["frequency_windows"] = [
+        {
+            "name": "positive_low_frequency",
+            "count": 2,
+            "positive_frequency": True,
+        }
+    ]
     config.write_text(yaml.safe_dump(config_data), encoding="utf-8")
     normalized = root / "data" / "processed" / "arrays"
-    _write_normalized_run(
-        normalized / "run-a.h5", "state-A", "run-a", "SVO", "300"
-    )
+    _write_normalized_run(normalized / "run-a.h5", "state-A", "run-a", "SVO", "300")
 
     metadata_dir = root / "data" / "metadata"
     metadata_dir.mkdir(parents=True)
     (metadata_dir / "convergence_verification.json").write_text(
-        '{"converged_iterations":["4"], "convergence_verified":true}',
+        _verification("run-a"),
         encoding="utf-8",
     )
 
@@ -198,3 +215,18 @@ def test_derived_window_selects_first_positive_matsubara_frequencies(
         assert mesh.shape == (2,)
         assert values.shape == (2, 2)
         assert np.array_equal(group.attrs["window_source_indices"], np.array([0, 1]))
+
+
+def test_global_convergence_boolean_cannot_certify_a_collection(tmp_path: Path) -> None:
+    root, config = _config(tmp_path)
+    normalized = root / "data/processed/arrays"
+    _write_normalized_run(normalized / "run.h5", "state-A", "run-A", "SVO", "300")
+    metadata_dir = root / "data/metadata"
+    metadata_dir.mkdir(parents=True)
+    (metadata_dir / "convergence_verification.json").write_text(
+        '{"convergence_verified": true, "converged_iterations": ["4"]}',
+        encoding="utf-8",
+    )
+    report = build_research_datasets(config, root)
+    assert report["baseline"]["record_count"] == 0
+    assert report["physics_constrained"]["record_count"] == 0

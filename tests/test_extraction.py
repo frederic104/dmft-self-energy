@@ -364,12 +364,11 @@ def test_normalized_output_is_idempotent_and_separates_identifiers(
         write_normalized_hdf5(extraction, output, {"different": True})
 
 
-def test_normalized_output_derives_run_and_verified_mesh_state(
+def test_normalized_output_keeps_mesh_state_candidate_unverified(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "raw" / "SVO" / "SVO_beta40.h5"
     source.parent.mkdir(parents=True)
-    iw = np.array([1j * (2 * n + 1) * np.pi / 40.0 for n in range(2050)])
     with h5py.File(source, "w") as handle:
         dmft = handle.create_group("dmft_output/G_iw/down_0")
         dmft.create_dataset("data", data=np.zeros((2050, 1, 1, 2)))
@@ -386,10 +385,11 @@ def test_normalized_output_derives_run_and_verified_mesh_state(
     _, result = write_normalized_hdf5(extraction, output)
 
     assert result["run_id"] == "SVO/SVO_beta40.h5"
-    assert result["physical_state_id"] == "material=SVO,beta=40"
+    assert result["physical_state_id"] == "unknown"
     with h5py.File(output, "r") as handle:
         assert bool(handle.attrs["run_id_explicit"]) is True
-        assert bool(handle.attrs["physical_state_id_explicit"]) is True
+        assert bool(handle.attrs["physical_state_id_explicit"]) is False
+        assert handle.attrs["physical_state_candidate"] == "material=SVO,beta=40"
         assert handle.attrs["material"] == "SVO"
         assert handle.attrs["beta"] == 40.0
         assert handle.attrs["parameter_block"] == "beta=40"
@@ -400,7 +400,6 @@ def test_normalized_output_updates_metadata_for_same_source_and_config(
 ) -> None:
     source = tmp_path / "raw" / "SVO" / "run.h5"
     source.parent.mkdir(parents=True)
-    iw = np.array([1j, 3j, 5j])
     with h5py.File(source, "w") as handle:
         dmft = handle.create_group("dmft_output/G_iw/down_0")
         dmft.create_dataset("data", data=np.zeros((2050, 1, 1, 2)))
@@ -426,7 +425,7 @@ def test_normalized_output_updates_metadata_for_same_source_and_config(
     old_manifest = __import__("json").loads(
         manifest_path.read_text(encoding="utf-8")
     )
-    old_manifest["physical_state_id"] = "unknown"
+    old_manifest["physical_state_id"] = "material=SVO,beta=40"
     manifest_path.write_text(
         __import__("json").dumps(old_manifest),
         encoding="utf-8",
@@ -440,7 +439,7 @@ def test_normalized_output_updates_metadata_for_same_source_and_config(
 
     assert updated["status"] == "written"
     assert updated["rewritten"] is True
-    assert updated["physical_state_id"] == "material=SVO,beta=40"
+    assert updated["physical_state_id"] == "unknown"
 
 
 def test_failed_extraction_is_reported_without_silently_skipping(

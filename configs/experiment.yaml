@@ -1,0 +1,39 @@
+# All paths resolve against this root relative to this config file.
+repository_root: ..
+source: data/raw/hdf5
+review: data/metadata/run_review.json
+prepared: data/processed/learning/exploratory_v1
+experiment: reports/local/experiments/exploratory_v1
+task: exploratory
+include_all: true
+# Conservative split groups only; never promoted to physical_state_id.
+grouping: material_beta_candidate
+# Inspect catalog first. Change these selectors to actual observed paths.
+selection:
+  input_path: /dmft_output/G0-1
+  target_path: /dmft_output/Sigma_iw
+  input_semantics: unresolved
+  target_semantics: unresolved
+positive_frequency_count: 64
+parameter_features: []  # Add U, JH, filling only when explicitly recorded per run.
+evaluation:
+  low_frequency_count: 10
+  relative_rms_floor: 1.0e-12
+assumptions:
+  - Material-directory names identify candidate material labels only.
+  - Common block labels do not verify a common Wannier basis.
+  - Input G0 path semantics and physical convergence remain unverified.
+seeds: [0, 1, 2]
+# Assign these exact material labels in run_review.json after reviewing paths.
+# Training uses remaining materials; no run from a held-out group enters training.
+split:
+  dimension: material
+  validation: [CVO]
+  test: [BVO]
+models:
+  - {name: mean}
+  - {name: nearest}
+  - {name: pca_ridge, latent_dimension: 4, alpha: 1.0}
+  - {name: pca_ridge, latent_dimension: 8, alpha: 1.0}
+  - {name: pca_ridge, latent_dimension: 16, alpha: 1.0}
+  - {name: mlp, hidden_layers: [64], max_iter: 500, alpha: 0.001}

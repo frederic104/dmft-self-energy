@@ -7,8 +7,9 @@ raw HDF5 paths and optional, independently curated metadata:
   diagnostic already observed for each source file.
 - `target_registry.json`: fail-closed selection of primary targets. A target is
   eligible only when an external registry supplies `status:
-  "verified_converged"`, a non-empty `evidence_source`, and an integer
-  `selected_iteration`.
+  "verified_converged"`, a non-empty `evidence_source`, an integer
+  `selected_iteration`, the matching `source_sha256`, and exact
+  `selected_quantity_paths` including `Sigma_iw`.
 - `replica_audit.json`: groups only runs whose `physical_state_id` was supplied
   explicitly. It does not infer independence from filenames, warmup, spin,
   orbitals, or iterations.
@@ -39,13 +40,14 @@ Minimal registry shape:
 ```json
 {
   "runs": {
-    "BVO/BVO_beta40_nwarmup100000.h5": {
+    "MATERIAL/reviewed_run.h5": {
       "status": "verified_converged",
       "evidence_source": "solver log path and criterion reviewed by researcher",
       "selected_iteration": 15,
+      "source_sha256": "SHA256_OF_THE_REVIEWED_RAW_FILE",
       "selected_quantity_paths": {
-        "G_iw": "/dmft_output/G_iw",
-        "Sigma_iw": "/dmft_output/Sigma_iw"
+        "G_iw": "/dmft_output/G-15",
+        "Sigma_iw": "/dmft_output/Sigma-15"
       }
     }
   }
@@ -54,3 +56,7 @@ Minimal registry shape:
 
 The registry is evidence supplied by a researcher; this repository records it
 but does not independently establish convergence.
+
+For executable paired preparation and baseline training, use the unified
+[learning workflow](learning_workflow.md). The audit above remains a standalone
+reporting interface; its registry format is not the newer per-run review list.

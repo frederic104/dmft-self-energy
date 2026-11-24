@@ -7,7 +7,6 @@ warmup settings, iterations, spin channels, or orbital channels.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections import defaultdict
 from pathlib import Path
@@ -15,6 +14,8 @@ from typing import Any
 
 import h5py
 
+from .hdf import physical_blocks
+from .provenance import sha256_file as _sha256
 
 UNKNOWN = "unknown"
 SCHEMA_VERSION = 1
@@ -40,17 +41,9 @@ def _load_diagnostics(path: Path | None) -> dict[str, dict[str, Any]]:
         if not isinstance(row, dict) or not isinstance(
             row.get("relative_source_path"), str
         ):
-            raise ValueError("Each run-diagnostics row requires relative_source_path")
+            raise TypeError("Each run-diagnostics row requires relative_source_path")
         rows[row["relative_source_path"]] = row
     return rows
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while chunk := handle.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _scalar(value: Any) -> str | int | float | bool:
@@ -72,11 +65,7 @@ def _final_block_names(dmft: h5py.Group, quantity: str) -> list[str]:
     final = dmft.get(f"{quantity}_iw")
     if not isinstance(final, h5py.Group):
         return []
-    return sorted(
-        name for name, group in final.items()
-        if isinstance(group, h5py.Group)
-        and isinstance(group.get("data"), h5py.Dataset)
-    )
+    return list(physical_blocks(final))
 
 
 def _storage_schema(path: Path) -> dict[str, Any]:
@@ -112,6 +101,8 @@ def build_physical_state_manifest(
 ) -> dict[str, Any]:
     """Write run provenance without claiming that candidate groups are states."""
     root = Path(source_root).resolve()
+    if not root.is_dir():
+        raise FileNotFoundError(root)
     diagnostics = _load_diagnostics(
         Path(diagnostics_path).resolve() if diagnostics_path else None
     )
@@ -164,8 +155,8 @@ def build_physical_state_manifest(
         "records": records,
         "limitations": [
             "A physical_state_id is accepted only from supplied metadata.",
-            "Path, beta, warmup, iteration, spin, and orbital information do not "
-            "establish an independent physical state.",
+            ("Path, beta, warmup, iteration, spin, and orbital information do not "
+             "establish an independent physical state."),
             "Storage diagnostics do not establish DMFT convergence.",
         ],
     }
@@ -207,11 +198,17 @@ def build_target_registry(
             evidence.get("status") == "verified_converged"
             and isinstance(evidence.get("evidence_source"), str)
             and bool(evidence["evidence_source"].strip())
-            and isinstance(evidence.get("selected_iteration"), int)
+            and type(evidence.get("selected_iteration")) is int
+            and evidence.get("source_sha256") == run.get("source_sha256")
+            and bool(evidence.get("source_sha256"))
+            and isinstance(evidence.get("selected_quantity_paths"), dict)
+            and isinstance(evidence["selected_quantity_paths"].get("Sigma_iw"), str)
+            and evidence["selected_quantity_paths"]["Sigma_iw"].startswith("/")
         )
         records.append({
             "relative_source_path": relative,
             "physical_state_id": run["physical_state_id"],
+            "source_sha256": run.get("source_sha256"),
             "storage_status": run["storage_status"],
             "selected_iteration": evidence.get("selected_iteration"),
             "selected_quantity_paths": evidence.get("selected_quantity_paths", {}),
@@ -278,8 +275,8 @@ def audit_replicas(
         "unresolved_run_count": len(unresolved),
         "unresolved_relative_source_paths": sorted(unresolved),
         "limitations": [
-            "A replica group does not prove member arrays are statistically "
-            "independent.",
+            ("A replica group does not prove member arrays are statistically "
+             "independent."),
             "Runs without supplied physical_state_id are intentionally not grouped.",
         ],
     }
@@ -345,8 +342,8 @@ def create_blocked_splits(
             "minimum_physical_states": minimum_states,
             "folds": folds if len(by_material) >= 2 else [],
             "limitations": [
-                "Temperature- and parameter-blocked folds require separately "
-                "verified metadata.",
+                ("Temperature- and parameter-blocked folds require separately "
+                 "verified metadata."),
             ],
         }
     output = Path(output_path)

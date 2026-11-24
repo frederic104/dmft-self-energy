@@ -7,8 +7,6 @@ or log evidence.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 from pathlib import Path
 from typing import Any
@@ -16,6 +14,8 @@ from typing import Any
 import h5py
 import numpy as np
 
+from .hdf import read_complex_dataset
+from .provenance import sha256_file
 
 QUANTITIES = ("G", "G0", "Weiss", "hybridization", "Sigma", "spectral")
 
@@ -63,6 +63,8 @@ def _direct_quantity_roots(handle: h5py.File) -> dict[str, h5py.Group]:
 
 
 def _numeric_payload(dataset: h5py.Dataset) -> np.ndarray | None:
+    if dataset.name.endswith("/data"):
+        return read_complex_dataset(dataset)
     dtype = dataset.dtype
     if dtype.names:
         names = {re.sub(r"[^a-z]", "", name.lower()): name for name in dtype.names}
@@ -120,7 +122,7 @@ def inspect_triqs_file(file_path: str | Path, source_root: str | Path) -> dict[s
     path = Path(file_path)
     root = Path(source_root)
     relative_path = path.relative_to(root).as_posix()
-    sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+    sha256 = sha256_file(path)
 
     report: dict[str, Any] = {
         "relative_source_path": relative_path,
@@ -147,11 +149,21 @@ def inspect_triqs_file(file_path: str | Path, source_root: str | Path) -> dict[s
             report["file_attributes"] = _attributes(handle)
             report["iteration_evidence"] = _find_iteration_evidence(handle)
 
-            for quantity, quantity_root in _direct_quantity_roots(handle).items():
+            roots = _direct_quantity_roots(handle)
+            dmft = handle.get("dmft_output")
+            if isinstance(dmft, h5py.Group):
+                for quantity in QUANTITIES:
+                    if any(re.fullmatch(rf"{quantity}-\d+", n) for n in dmft):
+                        roots[quantity] = dmft
+            for quantity, quantity_root in roots.items():
                 iteration_groups: dict[str, h5py.Group] = {}
                 for name, obj in quantity_root.items():
                     if isinstance(obj, h5py.Group):
-                        if name.isdigit():
+                        flat_match = re.fullmatch(rf"{quantity}-(\d+)", name)
+                        if quantity_root.name == "/dmft_output":
+                            if flat_match:
+                                iteration_groups[flat_match.group(1)] = obj
+                        elif name.isdigit():
                             iteration_groups[name] = obj
                         elif re.search(r"(?:iteration[_-]?|iter[_-]?)(\d+)", name.lower()):
                             match = re.search(
@@ -160,11 +172,9 @@ def inspect_triqs_file(file_path: str | Path, source_root: str | Path) -> dict[s
                             iteration_groups[match.group(1)] = obj
 
                 mesh_objects: list[str] = []
-                for iteration_name, iteration_group in iteration_groups.items():
-                    for name, obj in iteration_group.items():
-                        if isinstance(obj, h5py.Group):
-                            pass
-                    def collect_meshes(name: str, obj: h5py.Group | h5py.Dataset) -> None:
+                for iteration_group in iteration_groups.values():
+                    def collect_meshes(name: str, obj: h5py.Group | h5py.Dataset,
+                                       mesh_objects=mesh_objects) -> None:
                         if "mesh" in name.lower() or "meshimfreq" in name.lower():
                             mesh_objects.append(obj.name)
                     iteration_group.visititems(collect_meshes)
@@ -180,6 +190,7 @@ def inspect_triqs_file(file_path: str | Path, source_root: str | Path) -> dict[s
                         for iteration_group in iteration_groups.values()
                         for name in iteration_group
                         if isinstance(iteration_group[name], h5py.Group)
+                        and isinstance(iteration_group[name].get("data"), h5py.Dataset)
                     }),
                     "mesh_objects": sorted(set(mesh_objects)),
                 }
@@ -256,7 +267,7 @@ def inspect_triqs_file(file_path: str | Path, source_root: str | Path) -> dict[s
                         "reason": "Convergence evidence was found, but no repository threshold or independent validation is applied.",
                         "evidence": convergence_keys,
                     }
-    except Exception as error:
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError) as error:
         report["status"] = "failed"
         report["errors"].append({
             "error_type": type(error).__name__,
