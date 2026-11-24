@@ -19,3 +19,4 @@ jobs:
       - run: >-
           ruff check src/dmft_data/hdf.py src/dmft_data/learning
           src/dmft_data/__main__.py tests/test_learning.py
+          src/dmft_data/physics.py tests/test_physics.py
