@@ -82,12 +82,14 @@ def test_target_registry_and_splits_require_explicit_external_evidence(
             {
                 "relative_source_path": "SVO/a.h5",
                 "physical_state_id": "svo-state",
+                "source_sha256": "a" * 64,
                 "material": "SVO",
                 "storage_status": "final_matches_last_iteration",
             },
             {
                 "relative_source_path": "CVO/b.h5",
                 "physical_state_id": "cvo-state",
+                "source_sha256": "b" * 64,
                 "material": "CVO",
                 "storage_status": "final_matches_last_iteration",
             },
@@ -108,11 +110,15 @@ def test_target_registry_and_splits_require_explicit_external_evidence(
             "status": "verified_converged",
             "evidence_source": "solver-log: line 42",
             "selected_iteration": 15,
+            "source_sha256": "a" * 64,
+            "selected_quantity_paths": {"Sigma_iw": "/dmft_output/Sigma-15"},
         },
         "CVO/b.h5": {
             "status": "verified_converged",
             "evidence_source": "solver-log: line 51",
             "selected_iteration": 15,
+            "source_sha256": "b" * 64,
+            "selected_quantity_paths": {"Sigma_iw": "/dmft_output/Sigma-15"},
         },
     }})
     targets = build_target_registry(

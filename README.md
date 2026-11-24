@@ -43,13 +43,10 @@ included in this repository.
 
 ## Development Status
 
-- [ ] Repository structure
-- [ ] HDF5 inventory
-- [x] HDF5 reader
-- [ ] Data extraction
-- [ ] Numerical validation
-- [ ] Convergence assessment
-- [ ] Training dataset construction
+- HDF5 extraction and storage diagnostics support the observed TRIQS schema.
+- Paired preparation and CPU baseline training are available through one CLI.
+- Physical input semantics and per-run convergence require external evidence.
+- Causal learned decoders, controlled ED, and spectral validation remain future work.
 
 ## Installation
 
@@ -63,12 +60,34 @@ Activate the environment and install:
 pip install -e ".[dev]"
 ```
 
+For baseline experiments, install `pip install -e ".[dev,ml]"`.
+
+## Recommended learning workflow
+
+On the Ubuntu machine, activate `physai` and work in
+`/home/frederic104/projects/dmft-self-energy`:
+
+```bash
+python -m dmft_data catalog --source data/raw/hdf5 --output data/metadata/run_review.json
+# Inspect the catalog and set input/target paths in configs/experiment.yaml.
+python -m dmft_data prepare --config configs/experiment.yaml
+python -m dmft_data summary --config configs/experiment.yaml
+python -m dmft_data train --config configs/experiment.yaml
+```
+
+The example runs an explicitly exploratory stored-array experiment, even while
+convergence remains `not_assessed`. It keeps spin/orbital blocks together and
+groups replicas before fitting. Primary experiments use reviewed physical-state
+IDs, scoped convergence evidence, and verified input semantics. See
+[the workflow and evaluation protocol](docs/learning_workflow.md) for review
+format, grouping, model selection, output artifacts, and limitations.
+
 ## Data Processing
 
 The local data directory is configured through
 `configs/dataset.yaml`.
 
-Run the pipeline in the following order:
+The earlier normalized-HDF5/compatibility export workflow remains available:
 
 ```bash
 python scripts/01_inventory.py
@@ -109,8 +128,10 @@ converged records and a non-overlapping material-blocked holdout. It is not a
 claim that this script independently validated the HDF5 data, convergence,
 causality, or spectral reconstruction.
 
-The commands will be enabled as the corresponding
-modules are implemented.
+It is not required before the paired baseline workflow above. Legacy convergence
+registries now require per-run SHA-256, exact `verified_source_paths`, a
+`verified_converged` status, and an evidence reference. Collection-wide booleans
+and unreviewed HDF5 flags cannot certify primary targets.
 
 ### HDF5 storage diagnostics
 

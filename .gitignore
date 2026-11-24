@@ -14,6 +14,8 @@ data/metadata/
 laptop-results/
 reports/local/
 data/processed/research_datasets/
+data/processed/learning/
+*.egg-info/
 
 # Python environments
 .venv/

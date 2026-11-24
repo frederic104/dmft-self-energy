@@ -621,7 +621,7 @@ def read_hdf5_file(
         relative_path = path.relative_to(root).as_posix()
     except ValueError:
         relative_path = path.as_posix()
-    sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+    sha256 = sha256_file(path)
 
     try:
         handle = h5py.File(path, "r")
@@ -734,8 +734,9 @@ def write_normalized_hdf5(
         "physical_state_id", "state_id", "calculation_state_id",
     })
     if not state_id_explicit and derived_state is not None:
-        physical_state_id = derived_state
-        state_id_explicit = True
+        # A material/beta label is useful for review, but does not establish
+        # equal U, J, structure, filling, or an independent physical state.
+        physical_state_id = "unknown"
     config = extraction_config or {}
     manifest = {
         "source_relative_path": extraction.relative_source_path,
@@ -778,6 +779,8 @@ def write_normalized_hdf5(
             handle.attrs["source_sha256"] = extraction.sha256
             handle.attrs["run_id_explicit"] = run_id_explicit
             handle.attrs["physical_state_id_explicit"] = state_id_explicit
+            if derived_state is not None:
+                handle.attrs["physical_state_candidate"] = derived_state
             if material:
                 handle.attrs["material"] = material
             if len(beta_values) == 1:

@@ -59,55 +59,23 @@ def _is_verified_converged(
     verification_records: dict[str, Any],
 ) -> bool:
     """Accept convergence only from an explicit, named verification source."""
-    attr = _array_attribute(
-        dataset,
-        ("is_converged", "converged", "convergence_verified", "verified_converged"),
-    )
-    file_attr = _attribute(
-        source,
-        (
-            "is_converged",
-            "converged",
-            "convergence_verified",
-            "verified_converged",
-            "convergence_status",
-        ),
-    )
-    iteration = str(_array_attribute(dataset, ("iteration", "iteration_id")) or "unknown")
-
-    if _explicit_bool(attr) or _explicit_bool(file_attr):
-        return True
-
-    converged_iteration = _attribute(
-        source,
-        ("converged_iteration", "verified_converged_iteration"),
-    )
-    if converged_iteration is not None and iteration == str(converged_iteration):
-        return True
-
-    records = verification_records
-    candidates = [
-        records,
-        records.get(relative_path, {}),
-        records.get(state_id, {}),
-        records.get(run_id, {}),
-    ]
-    for record in candidates:
+    # A global boolean, state-level declaration, or unreviewed stored flag must
+    # never certify every array in a collection. Bind evidence to source bytes
+    # and exact original array paths, as in the newer paired learning workflow.
+    records = verification_records.get("runs", verification_records)
+    for key in (relative_path, run_id):
+        record = records.get(key, {})
         if not isinstance(record, dict):
             continue
         if (
-            _explicit_bool(record.get("converged"))
-            or _explicit_bool(record.get("convergence_verified"))
-            or str(record.get("status", "")).lower() == "converged"
+            record.get("status") == "verified_converged"
+            and isinstance(record.get("evidence_source"), str)
+            and bool(record["evidence_source"].strip())
+            and record.get("source_sha256") == source.attrs.get("source_sha256")
+            and bool(record.get("source_sha256"))
+            and isinstance(record.get("verified_source_paths"), list)
+            and dataset.attrs.get("source_path") in record.get("verified_source_paths", [])
         ):
-            return True
-        iterations = record.get("converged_iterations")
-        if isinstance(iterations, (list, tuple)) and iteration in {
-            str(item) for item in iterations
-        }:
-            return True
-        verified_iteration = record.get("converged_iteration")
-        if verified_iteration is not None and iteration == str(verified_iteration):
             return True
     return False
 

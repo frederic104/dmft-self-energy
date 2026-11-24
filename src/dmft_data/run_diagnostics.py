@@ -7,7 +7,6 @@ inspect residuals or solver logs and are not a DMFT convergence criterion.
 from __future__ import annotations
 
 import csv
-import hashlib
 import json
 import re
 from pathlib import Path
@@ -16,20 +15,13 @@ from typing import Any
 import h5py
 import numpy as np
 
-from .extraction import is_complex_marker, read_hdf5_file
-
+from .extraction import UnsupportedSchemaError, read_hdf5_file
+from .hdf import physical_blocks as _physical_blocks
+from .hdf import read_complex_dataset
+from .provenance import sha256_file
 
 DEFAULT_RELATIVE_RMS_FLOOR = 1e-12
 DEFAULT_LOW_FREQUENCY_COUNT = 10
-
-
-def sha256_file(path: Path) -> str:
-    """Return a file SHA-256 checksum without loading it all into memory."""
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while chunk := handle.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _iteration_numbers(dmft: h5py.Group, prefix: str) -> list[int]:
@@ -58,24 +50,10 @@ def _mesh_metadata(dmft: h5py.Group) -> dict[str, Any]:
 
 
 def _complex_payload(dataset: h5py.Dataset) -> np.ndarray | None:
-    raw = np.asarray(dataset[()])
-    if (
-        is_complex_marker(dataset.attrs.get("__complex__", 0))
-        or is_complex_marker(dataset.attrs.get("complex", 0))
-    ) and raw.ndim >= 1 and raw.shape[-1] == 2:
-        return raw[..., 0] + 1j * raw[..., 1]
-    if raw.ndim >= 1 and raw.shape[-1] == 2 and raw.dtype.kind in "iuf":
-        return raw[..., 0] + 1j * raw[..., 1]
-    return raw if dataset.dtype.kind == "c" else None
-
-
-def _physical_blocks(container: h5py.Group) -> dict[str, h5py.Dataset]:
-    """Return blocks only when the group has a physical ``data`` dataset."""
-    return {
-        name: data for name, block in container.items()
-        if isinstance(block, h5py.Group)
-        and isinstance(data := block.get("data"), h5py.Dataset)
-    }
+    try:
+        return read_complex_dataset(dataset)
+    except UnsupportedSchemaError:
+        return None
 
 
 def _positive_frequency_indices(
