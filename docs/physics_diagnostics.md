@@ -6,11 +6,6 @@ energy conventions and solver stages. No universal meV tolerance is assumed.
 
 ## Ubuntu workflow
 
-```bash
-conda activate physai
-cd /home/frederic104/projects/dmft-self-energy
-python -m pip install -e ".[dev,ml]"
-
 # This copies an unresolved template, not a physical-state or convergence certificate.
 # Skip the copy if you already have a manually reviewed file.
 cp -n configs/physics_review.example.yaml data/metadata/physics_review.yaml
