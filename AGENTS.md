@@ -44,3 +44,17 @@ For every implementation task, report:
 - Test results
 - Known limitations
 - Unverified physical assumptions
+
+## Local-data workflow
+
+- Raw and processed HDF5 data stay on the local WSL2 laptop and are never
+  committed, uploaded, or copied into this repository.
+- Keep generated transfer bundles in `laptop-results/` or `reports/local/`.
+  Before sharing a report, review it for local paths and attributes that are
+  not needed for schema or validation review.
+- Treat collection, extraction, and final-iteration equivalence as technical
+  diagnostics only. They are not evidence that a DMFT run converged.
+- Run `scripts/09_ml_readiness.py` after producing the local dataset-build
+  report. A `not_ready` result blocks ML performance claims; it does not
+  diagnose the missing scientific evidence.
+- Work on a feature branch and do not merge or push to `main` automatically.

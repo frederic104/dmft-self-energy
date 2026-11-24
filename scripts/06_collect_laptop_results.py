@@ -29,6 +29,26 @@ from dmft_data.validation import validate_extraction
 LOGGER = logging.getLogger(__name__)
 
 
+def _redact_source_root(value: Any, source_root: Path) -> Any:
+    """Replace the local source-root prefix in JSON-safe report values.
+
+    This is deliberately narrow: HDF5-internal paths such as ``/dmft/Sigma``
+    are retained, while filesystem paths below the user-provided source root
+    are replaced with a stable placeholder.
+    """
+    root = str(source_root)
+    if isinstance(value, str):
+        return value.replace(root, "<LOCAL_SOURCE_ROOT>")
+    if isinstance(value, list):
+        return [_redact_source_root(item, source_root) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _redact_source_root(item, source_root)
+            for key, item in value.items()
+        }
+    return value
+
+
 def sha256_file(path: Path) -> str:
     """Return a SHA-256 checksum without changing the source file."""
     digest = hashlib.sha256()
@@ -149,10 +169,12 @@ def inspect_one_file(
     report_path = per_file_dir / Path(relative).with_suffix(".json")
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(
-        json.dumps(result, indent=2, sort_keys=True) + "\n",
+        json.dumps(
+            _redact_source_root(result, source_root), indent=2, sort_keys=True
+        )
+        + "\n",
         encoding="utf-8",
     )
-    result["report_path"] = str(report_path)
     return result
 
 
@@ -217,7 +239,7 @@ def collect_laptop_results(
         "status": "passed" if source_root.is_dir() and not any(
             file["status"] == "failed" for file in files
         ) else "failed",
-        "source_root": str(source_root),
+        "source_root": "<LOCAL_SOURCE_ROOT>",
         "source_count": len(sources),
         "software": software_versions(),
         "platform": {
@@ -225,7 +247,7 @@ def collect_laptop_results(
             "system": platform.system(),
             "machine": platform.machine(),
         },
-        "files": files,
+        "files": _redact_source_root(files, source_root),
     }
     if not source_root.is_dir():
         aggregate["failures"] = [{

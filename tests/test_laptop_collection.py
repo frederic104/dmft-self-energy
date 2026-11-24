@@ -50,4 +50,10 @@ def test_collect_laptop_results_writes_transfer_bundle(
 
     aggregate_path = output / "laptop_collection.json"
     assert json.loads(aggregate_path.read_text(encoding="utf-8"))["source_count"] == 1
+    aggregate_text = aggregate_path.read_text(encoding="utf-8")
+    assert str(source.resolve()) not in aggregate_text
+    assert "<LOCAL_SOURCE_ROOT>" in aggregate_text
     assert zipfile.is_zipfile(zip_path)
+    with zipfile.ZipFile(zip_path) as archive:
+        per_file_text = archive.read("per_file/sample.json").decode("utf-8")
+    assert str(source.resolve()) not in per_file_text
