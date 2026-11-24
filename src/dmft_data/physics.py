@@ -137,13 +137,17 @@ def _plot_prediction(path, omega, predicted, reference, scale, unit, labels):
                     omega, component(pred - ref) * scale, alpha=0.7, color=color
                 )
     axes[0, 0].legend(fontsize=6, ncol=2)
+    axis_unit = "meV" if unit == "meV" else "native"
     for row, name in enumerate(("Re", "Im")):
-        axes[row, 0].set_ylabel(f"{name} target / prediction [{unit}]")
-        axes[row, 1].set_ylabel(f"{name} prediction minus reference [{unit}]")
+        axes[row, 0].set_ylabel(f"{name} value [{axis_unit}]")
+        axes[row, 1].set_ylabel(f"{name} error [{axis_unit}]")
         axes[row, 1].axhline(0, color="black", linewidth=0.5)
     for ax in axes[-1]:
-        ax.set_xlabel(f"positive Matsubara omega [{unit}]")
-    fig.suptitle("Solid: stored reference; dashed: prediction. Diagonal elements.")
+        ax.set_xlabel(f"positive Matsubara omega [{axis_unit}]")
+    fig.suptitle(
+        "Solid: reference; dashed: prediction. Diagonal elements.\n"
+        f"Unit convention: {unit}"
+    )
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
