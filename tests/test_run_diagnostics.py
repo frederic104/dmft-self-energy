@@ -8,7 +8,11 @@ import numpy as np
 from dmft_data.run_diagnostics import classify_hdf5_run, classify_hdf5_runs
 
 
-def _write_run(path: Path, mismatch: bool = False) -> None:
+def _write_run(
+    path: Path,
+    mismatch: bool = False,
+    complex_marker: int | str = 1,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     raw = np.zeros((2050, 1, 1, 2), dtype=np.float64)
     raw[..., 0] = 1.0
@@ -20,7 +24,7 @@ def _write_run(path: Path, mismatch: bool = False) -> None:
                 final = dmft.require_group(f"{quantity}_iw")
                 final_block = final.create_group(block_name)
                 final_data = final_block.create_dataset("data", data=raw)
-                final_data.attrs["__complex__"] = 1
+                final_data.attrs["__complex__"] = complex_marker
 
                 iteration = dmft.require_group(f"{quantity}-15")
                 iteration_block = iteration.create_group(block_name)
@@ -31,7 +35,7 @@ def _write_run(path: Path, mismatch: bool = False) -> None:
                     "data",
                     data=iteration_raw,
                 )
-                iteration_data.attrs["__complex__"] = 1
+                iteration_data.attrs["__complex__"] = complex_marker
 
         mesh = dmft.create_group("G_iw/down_0/mesh")
         domain = mesh.create_group("domain")
@@ -69,3 +73,13 @@ def test_writes_run_diagnostics_reports(tmp_path: Path) -> None:
     assert summary["convergence_status"] == "not_assessed"
     assert (tmp_path / "reports" / "run_diagnostics.json").is_file()
     assert (tmp_path / "reports" / "run_diagnostics.csv").is_file()
+
+
+def test_classifies_string_complex_marker(tmp_path: Path) -> None:
+    root = tmp_path / "raw"
+    path = root / "SVO" / "SVO_beta40.h5"
+    _write_run(path, complex_marker="1")
+
+    row = classify_hdf5_run(path, root)
+
+    assert row["run_status"] == "extracted_final_equivalent"

@@ -12,7 +12,7 @@ from typing import Any
 import h5py
 import numpy as np
 
-from .extraction import read_hdf5_file
+from .extraction import is_complex_marker, read_hdf5_file
 
 
 def sha256_file(path: Path) -> str:
@@ -67,8 +67,8 @@ def _mesh_metadata(dmft: h5py.Group) -> dict[str, Any]:
 def _complex_payload(dataset: h5py.Dataset) -> np.ndarray | None:
     raw = np.asarray(dataset[()])
     if (
-        dataset.attrs.get("__complex__", 0) == 1
-        or dataset.attrs.get("complex", 0) == 1
+        is_complex_marker(dataset.attrs.get("__complex__", 0))
+        or is_complex_marker(dataset.attrs.get("complex", 0))
     ) and raw.ndim >= 1:
         if raw.shape[-1] == 2:
             return raw[..., 0] + 1j * raw[..., 1]
