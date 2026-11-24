@@ -62,9 +62,8 @@ def _complex_payload(dataset: h5py.Dataset) -> np.ndarray | None:
     if (
         is_complex_marker(dataset.attrs.get("__complex__", 0))
         or is_complex_marker(dataset.attrs.get("complex", 0))
-    ) and raw.ndim >= 1:
-        if raw.shape[-1] == 2:
-            return raw[..., 0] + 1j * raw[..., 1]
+    ) and raw.ndim >= 1 and raw.shape[-1] == 2:
+        return raw[..., 0] + 1j * raw[..., 1]
     if raw.ndim >= 1 and raw.shape[-1] == 2 and raw.dtype.kind in "iuf":
         return raw[..., 0] + 1j * raw[..., 1]
     return raw if dataset.dtype.kind == "c" else None
