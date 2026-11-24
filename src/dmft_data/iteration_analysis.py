@@ -110,11 +110,8 @@ def metadata_candidates(handle: h5py.File) -> list[dict]:
 
 
 def change_figure(path: Path, rows: list[dict], block_changes: list[dict]) -> None:
-    """Plot adjacent Sigma changes without imposing a convergence threshold."""
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    """Plot adjacent Sigma components and blocks, retaining zeros on linear axes."""
+    from .plotting import COLORS, MARKERS, figure_style, finish
 
     selected = [
         r
@@ -123,39 +120,54 @@ def change_figure(path: Path, rows: list[dict], block_changes: list[dict]) -> No
     ]
     if not selected:
         return
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4))
-    for key, label in (
-        ("real_offset_rms", "frequency-constant Re shift"),
-        ("real_shape_rmse", "frequency-dependent Re change"),
-        ("imaginary_rmse", "Im change"),
-    ):
-        axes[0].plot(
-            [r["iteration"] for r in selected],
-            [r["change_from_previous"][key] for r in selected],
-            "o-",
-            label=label,
+    with figure_style() as plt:
+        fig, axes = plt.subplots(1, 2, figsize=(7.1, 3.0), layout="constrained")
+        for i, (key, label) in enumerate(
+            (
+                ("real_offset_rms", "constant Re"),
+                ("real_shape_rmse", "varying Re"),
+                ("imaginary_rmse", "Im"),
+            )
+        ):
+            axes[0].plot(
+                [r["iteration"] for r in selected],
+                [r["change_from_previous"][key] for r in selected],
+                color=COLORS[i],
+                marker=MARKERS[i],
+                markersize=3,
+                linestyle=("-", "--", ":")[i],
+                label=label,
+            )
+        blocks = sorted({r["block"] for r in block_changes if r["quantity"] == "Sigma"})
+        for i, block in enumerate(blocks):
+            points = [
+                r
+                for r in block_changes
+                if r["quantity"] == "Sigma" and r["block"] == block
+            ]
+            axes[1].plot(
+                [r["to_iteration"] for r in points],
+                [r["complex_rmse"] for r in points],
+                color=COLORS[i % len(COLORS)],
+                marker=MARKERS[i % len(MARKERS)],
+                markersize=3,
+                linestyle="-" if i % 2 == 0 else "--",
+                label=block,
+            )
+        for ax in axes:
+            ax.set_xlabel("Stored iteration")
+            ax.set_ylabel(r"RMS $\Delta\Sigma$ (native units)")
+            ax.legend(frameon=False, ncol=2)
+        finish(
+            fig,
+            axes,
+            path,
+            "(a) Frequency-constant real shift, frequency-dependent real residual and imaginary change. "
+            "(b) Block-resolved complex RMS changes. Each point compares with the previous STORED iteration; "
+            "missing iteration numbers are not filled. Axes are linear and include zeros. "
+            "Window and signed offsets are in the companion CSV/JSON. These are descriptive changes, not convergence criteria.",
         )
-    for block in sorted(
-        {r["block"] for r in block_changes if r["quantity"] == "Sigma"}
-    ):
-        points = [
-            r for r in block_changes if r["quantity"] == "Sigma" and r["block"] == block
-        ]
-        axes[1].plot(
-            [r["to_iteration"] for r in points],
-            [r["complex_rmse"] for r in points],
-            "o-",
-            label=block,
-        )
-    for ax in axes:
-        ax.set_xlabel("to stored iteration (compared with previous stored iteration)")
-        ax.set_ylabel("RMS Sigma change [native unit]")
-        ax.legend(fontsize=7)
-        ax.grid(alpha=0.2)
-    fig.suptitle("Stored iteration changes; no convergence criterion applied")
-    fig.tight_layout()
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
+        plt.close(fig)
 
 
 def write_changes_csv(path: Path, changes: list[dict]) -> None:

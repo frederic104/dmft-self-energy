@@ -61,3 +61,9 @@ def test_irregular_iteration_numbers_real_shift_and_imaginary_shape(tmp_path):
     assert report["convergence_status"] == "not_assessed"
     assert (tmp_path / "BVO_step_changes.csv").is_file()
     assert (tmp_path / "BVO_step_changes.png").stat().st_size > 1000
+    assert (tmp_path / "BVO_step_changes.pdf").is_file()
+    assert (
+        "previous STORED iteration"
+        in (tmp_path / "BVO_step_changes.caption.md").read_text()
+    )
+    assert (tmp_path / "BVO_iterations.pdf").is_file()

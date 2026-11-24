@@ -21,3 +21,4 @@ jobs:
           src/dmft_data/__main__.py tests/test_learning.py
           src/dmft_data/physics.py tests/test_physics.py
           src/dmft_data/iteration_analysis.py tests/test_iteration_analysis.py
+          src/dmft_data/plotting.py src/dmft_data/validation_protocol.py

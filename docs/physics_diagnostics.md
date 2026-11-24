@@ -20,9 +20,12 @@ Outputs are under the existing experiment's `physics_diagnostics/`:
   per-block errors, selected neighbor identities, and requested raw-run checks.
 - `block_metrics.csv`: one row per seed/test-group/block; metrics stay in native
   units, and signed offsets retain every matrix element.
+- `validation_plan.json`: ordered physics checks, evidence status and acceptance reasoning.
 - `seed_*_group_*.png`: Re/Im reference versus prediction, with signed errors on
   the actual positive Matsubara frequency axis. The plotted curves are diagonal
-  elements; numeric errors include all matrix elements.
+  elements; numeric errors include all matrix elements. Companion `_blocks`
+  figures resolve individual blocks. Figures also have vector `.pdf` exports
+  and `.caption.md` draft captions.
 
 Definition entries have `value`, `status` and `evidence`. Only `status: reviewed`
 with a nonempty evidence reference and a value counts as reviewed. Record the
@@ -58,8 +61,9 @@ python -m dmft_data diagnose --config configs/experiment.yaml \
 
 This verifies the raw checksum against preparation and compares final G/Sigma
 with each stored iteration on identical block/mesh layouts. It records exact
-matches and RMS changes to the previous stored iteration. A plot overlays mean
-diagonal Sigma trajectories. The numeric report retains all blocks. Within-run
+matches and RMS changes to the previous stored iteration. Trajectory panels
+resolve each block's diagonal Sigma, with iteration colorbar and dashed final
+payload. The numeric report retains all blocks. Within-run
 up/down differences are descriptive; paramagnetism, orbital degeneracy and
 cross-material orbital correspondence are not assumed. Missing/malformed
 quantities are recorded as raw-run failures, never silently treated as matches.
@@ -132,3 +136,8 @@ The necessary source conventions are described in the
 and [CTHYB moments guide](https://triqs.github.io/cthyb/latest/guide/high_freq_moments.html).
 [VASP EDIFF](https://vasp.at/wiki/index.php/EDIFF) is a total-energy iteration
 termination criterion and is not a self-energy prediction tolerance.
+
+The [physics validation protocol](physics_validation_protocol.md) describes
+the staged checks, energy-budget study, reference uncertainty requirements and
+paper-style figure conventions. Computed descriptive changes do not complete
+the deferred physical validations.
