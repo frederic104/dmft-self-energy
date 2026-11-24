@@ -18,8 +18,8 @@ raw HDF5 paths and optional, independently curated metadata:
 Example on the Ubuntu machine:
 
 ```bash
-conda activate physai
-cd /home/frederic104/projects/dmft-self-energy
+conda activate [environment]
+cd ~/dmft-self-energy
 
 python scripts/10_audit_research_readiness.py \
   --source data/raw/hdf5 \
