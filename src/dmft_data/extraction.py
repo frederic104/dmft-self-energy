@@ -63,7 +63,7 @@ def _path_is_mesh(path: str) -> bool:
 
 
 def is_complex_marker(value: Any) -> bool:
-    """Interpret scalar TRIQS complex markers, including string storage."""
+    """Interpret the scalar complex marker used by supported HDF5 schemas."""
     if isinstance(value, bytes):
         value = value.decode("utf-8", errors="replace")
     if isinstance(value, np.generic):
@@ -90,13 +90,13 @@ def _classify_role(path: str, attrs: dict[str, Any]) -> str:
         return "dmft_weiss"
     if "/g0imp" in text or "/g0_imp" in text or "/dft/g0" in text:
         return "dft_derived_g0"
-    if re.search(r"/g0(?:$|[_/\s])", text):
+    if re.search(r"/g0(?:$|[_/\s-])", text):
         return "dft_derived_g0"
     if "/gimp" in text or "/g_imp" in text or "impurity_green" in text:
         return "impurity_green"
     if "/glat" in text or "/g_lat" in text or "lattice_green" in text:
         return "lattice_green"
-    if re.search(r"/g(?:$|[_/])", text):
+    if re.search(r"/g(?:$|[_/-])", text):
         return "green_function"
     if "/sigma_imp" in text or "/sigmaimp" in text or "impurity_self_energy" in text:
         return "impurity_self_energy"

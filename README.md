@@ -91,6 +91,23 @@ python -m venv .venv
 Send the generated `laptop-results/laptop_collection.zip` back to the
 workspace. The ZIP contains inventory, extraction, numerical-validation, and
 TRIQS-style diagnostic reports; it does not contain original HDF5 payloads.
+The collector replaces the supplied local source-root prefix with
+`<LOCAL_SOURCE_ROOT>`, but review the bundle before sharing because HDF5
+attributes may contain other project-specific information.
+
+After local normalized-data processing and `04_build_dataset.py`, record a
+fail-closed ML admission decision:
+
+```bash
+python scripts/09_ml_readiness.py \
+  --dataset-build-report reports/research_dataset_build.json \
+  --output reports/local/ml_readiness.json
+```
+
+`ready` only means the dataset-build report recorded explicitly verified
+converged records and a non-overlapping material-blocked holdout. It is not a
+claim that this script independently validated the HDF5 data, convergence,
+causality, or spectral reconstruction.
 
 The commands will be enabled as the corresponding
 modules are implemented.

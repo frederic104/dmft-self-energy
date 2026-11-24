@@ -237,6 +237,31 @@ def test_triqs_blockgf_last_axis_complex_without_mesh_vector(
     assert candidate.frequency_axis == 0
 
 
+def test_triqs_iteration_group_accepts_string_complex_marker(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "triqs_iteration.h5"
+    raw = np.zeros((3, 1, 1, 2), dtype=np.float64)
+    raw[..., 0] = 1.0
+    raw[..., 1] = 2.0
+    with h5py.File(path, "w") as handle:
+        block = handle.create_group("dmft_output/G-1/down_0")
+        data = block.create_dataset("data", data=raw)
+        data.attrs["__complex__"] = "1"
+        mesh = block.create_dataset("MeshImFreq", data=np.array([1j, 3j, 5j]))
+        mesh.attrs["kind"] = "matsubara"
+
+    result = read_hdf5_file(path)
+
+    assert len(result.arrays) == 1
+    candidate = result.arrays[0]
+    assert candidate.role == "green_function"
+    assert candidate.values.shape == (3, 1, 1)
+    assert np.iscomplexobj(candidate.values)
+    assert np.all(candidate.values.real == 1.0)
+    assert np.all(candidate.values.imag == 2.0)
+
+
 def test_triqs_g_tau_is_not_assigned_matsubara_mesh(
     tmp_path: Path,
 ) -> None:

@@ -103,3 +103,13 @@ def test_beta_variation_is_parameter_candidate_and_reports_written_files(
     assert summary["diagnostic_scope"] == "storage_consistency_not_dmft_convergence"
     assert (tmp_path / "reports" / "run_diagnostics.json").is_file()
     assert (tmp_path / "reports" / "run_diagnostics.csv").is_file()
+
+
+def test_classifies_string_complex_marker(tmp_path: Path) -> None:
+    root = tmp_path / "raw"
+    path = root / "SVO" / "SVO_beta40.h5"
+    _write_run(path, final_source=15)
+
+    row = classify_hdf5_run(path, root)
+
+    assert row["run_status"] == "final_matches_last_iteration"

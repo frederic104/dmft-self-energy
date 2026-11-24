@@ -9,6 +9,12 @@ data/processed/datasets/
 # Local metadata generated from private/local paths
 data/metadata/
 
+# Laptop-only collection bundles and generated research datasets.
+# Commit only deliberately reviewed, small reports outside these paths.
+laptop-results/
+reports/local/
+data/processed/research_datasets/
+
 # Python environments
 .venv/
 venv/
