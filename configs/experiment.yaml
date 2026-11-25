@@ -9,6 +9,8 @@ include_all: true
 # Conservative split groups only; never promoted to physical_state_id.
 grouping: material_beta_candidate
 # Inspect catalog first. Change these selectors to actual observed paths.
+# Initial stored G0 -> archive final Sigma: NOT the upstream same-iteration task.
+# See docs/upstream_data_contract.md; physical G0 semantics remain unresolved.
 selection:
   input_path: /dmft_output/G0-1
   target_path: /dmft_output/Sigma_iw

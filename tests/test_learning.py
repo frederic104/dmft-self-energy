@@ -12,7 +12,13 @@ import pytest
 import yaml
 
 from dmft_data.hdf import read_quantity
-from dmft_data.learning.data import catalog, load_json, prepare, write_json
+from dmft_data.learning.data import (
+    catalog,
+    load_json,
+    prepare,
+    quantity_pairs,
+    write_json,
+)
 from dmft_data.learning.experiment import causality_metrics, run_experiment
 from dmft_data.learning.models import encode
 from dmft_data.learning.splits import blocked_partition
@@ -101,6 +107,9 @@ def test_end_to_end_preparation_training_reload_and_reproducibility(tmp_path):
     assert all(r["convergence_status"] == "not_assessed" for r in manifest["records"])
     assert report["status"] == "completed"
     assert report["task"] == "exploratory"
+    assert report["quantity_pairs"] == [
+        {"input_path": "/dmft_output/G0-1", "target_path": "/dmft_output/Sigma_iw"}
+    ]
     splits = load_json(tmp_path / "experiment/splits.json")
     assert len(splits["train"]["groups"]) == 2
     assert len(splits["test"]["indices"]) == 2
@@ -116,6 +125,16 @@ def test_end_to_end_preparation_training_reload_and_reproducibility(tmp_path):
     assert second["test"] == report["test"]
     assert report["candidates"][2]["seeds"][0]["actual_latent_dimension"] == 1
     assert (tmp_path / "experiment/test_predictions_seed_3.npz").is_file()
+
+
+def test_quantity_pairs_preserves_per_run_overrides():
+    records = [
+        {"input_path": "/G0-1", "target_path": "/Sigma_iw"},
+        {"input_path": "/G0-5", "target_path": "/Sigma-5"},
+        {"input_path": "/G0-1", "target_path": "/Sigma_iw"},
+    ]
+    assert quantity_pairs(records) == records[:2]
+    assert quantity_pairs([]) == []
 
 
 def test_primary_needs_hash_and_target_scoped_evidence(tmp_path):
@@ -195,6 +214,39 @@ def test_changed_prepared_arrays_rejected(tmp_path):
     with (tmp_path / "prepared/arrays.npz").open("ab") as handle:
         handle.write(b"changed")
     with pytest.raises(ValueError, match="checksum"):
+        run_experiment(config, tmp_path)
+
+
+def test_training_rejects_selection_changed_after_preparation(tmp_path):
+    config = setup_experiment(tmp_path)
+    prepare(config, tmp_path)
+    changed = copy.deepcopy(config)
+    changed["selection"]["target_path"] = "/dmft_output/Sigma-5"
+    with pytest.raises(ValueError, match="selection differs"):
+        run_experiment(changed, tmp_path)
+
+
+def test_group_cannot_average_different_target_paths(tmp_path):
+    config = setup_experiment(tmp_path)
+    review_path = tmp_path / "review.json"
+    review = load_json(review_path)
+    run = next(r for r in review["runs"] if r["relative_source_path"] == "SVO/run0.h5")
+    run["target_path"] = "/dmft_output/Sigma-5"
+    write_json(review_path, review)
+    prepare(config, tmp_path)
+    with pytest.raises(ValueError, match="Inconsistent target_path"):
+        run_experiment(config, tmp_path)
+
+
+def test_mixed_target_semantics_rejected(tmp_path):
+    config = setup_experiment(tmp_path)
+    review_path = tmp_path / "review.json"
+    review = load_json(review_path)
+    review["runs"][0]["target_semantics"] = "impurity_self_energy"
+    review["runs"][1]["target_semantics"] = "lattice_self_energy"
+    write_json(review_path, review)
+    prepare(config, tmp_path)
+    with pytest.raises(ValueError, match="different target_semantics"):
         run_experiment(config, tmp_path)
 
 

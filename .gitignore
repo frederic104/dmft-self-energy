@@ -38,6 +38,7 @@ Thumbs.db
 
 # Local configuration
 configs/local.yaml
+configs/*.local.yaml
 
 # Model artifacts
 checkpoints/

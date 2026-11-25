@@ -273,6 +273,8 @@ def classify_hdf5_runs(
 ) -> dict[str, Any]:
     """Write storage-semantic reports for HDF5 runs below ``source_root``."""
     root, output = Path(source_root).resolve(), Path(output_dir).resolve()
+    if not root.is_dir():
+        raise NotADirectoryError(f"HDF5 source directory does not exist: {root}")
     output.mkdir(parents=True, exist_ok=True)
     sources = sorted(
         p for p in root.rglob("*")

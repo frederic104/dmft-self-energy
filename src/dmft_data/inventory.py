@@ -7,7 +7,6 @@ payload arrays and it does not infer physical meanings for ambiguous names.
 from __future__ import annotations
 
 import csv
-import hashlib
 import json
 from collections.abc import Iterable
 from pathlib import Path
@@ -16,6 +15,8 @@ from typing import Any
 import h5py
 import numpy as np
 import yaml
+
+from .provenance import sha256_file
 
 CSV_FIELDS = {
     "files": (
@@ -70,15 +71,6 @@ def discover_hdf5_files(
         (path for path in candidates if path.suffix.lower() in normalized),
         key=lambda path: path.as_posix(),
     )
-
-
-def sha256_file(path: str | Path) -> str:
-    """Return a file SHA-256 checksum."""
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def json_value(value: Any) -> Any:

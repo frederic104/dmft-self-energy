@@ -9,12 +9,12 @@ from pathlib import Path
 
 import yaml
 
-from .learning.data import catalog, load_json, prepare
+from .learning.data import catalog, load_json, prepare, quantity_pairs
 
 LOGGER = logging.getLogger(__name__)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -25,6 +25,11 @@ def main() -> None:
     listing.add_argument(
         "--output", type=Path, default=Path("data/metadata/run_review.json")
     )
+    storage = sub.add_parser("storage", help="Compare final arrays to stored iterations")
+    storage.add_argument("--source", type=Path, required=True)
+    storage.add_argument("--output", type=Path, default=Path("laptop-results/run_diagnostics"))
+    storage.add_argument("--low-frequency-count", type=int, default=10)
+    storage.add_argument("--relative-rms-floor", type=float, default=1e-12)
     for command in ("prepare", "train", "summary", "diagnose"):
         child = sub.add_parser(command)
         child.add_argument("--config", type=Path, required=True)
@@ -33,7 +38,7 @@ def main() -> None:
             child.add_argument("--output", type=Path)
             child.add_argument("--raw-run", action="append", default=[])
             child.add_argument("--raw-count", type=int)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.command == "catalog":
         if args.output.exists():
             parser.error(
@@ -41,6 +46,20 @@ def main() -> None:
             )
         result = catalog(args.source.resolve(), args.output)
         LOGGER.info("runs=%d failures=%d", len(result["runs"]), len(result["failures"]))
+        return
+    if args.command == "storage":
+        from .run_diagnostics import classify_hdf5_runs
+
+        result = classify_hdf5_runs(
+            args.source, args.output, low_frequency_count=args.low_frequency_count,
+            relative_rms_floor=args.relative_rms_floor,
+        )
+        LOGGER.info(
+            "Classified %d HDF5 runs; verified_mesh_files=%d",
+            result["file_count"], result["files_with_verified_mesh"],
+        )
+        if not result["file_count"]:
+            LOGGER.warning("No HDF5 files found under %s", args.source.resolve())
         return
     config = yaml.safe_load(args.config.read_text(encoding="utf-8"))
     # Paths are relative to repository_root, resolved relative to the config file.
@@ -72,6 +91,7 @@ def main() -> None:
             "task": manifest["task"],
             "samples": manifest["sample_count"],
             "groups": manifest["group_count"],
+            "quantity_pairs": quantity_pairs(manifest["records"]),
             "excluded": len(manifest["excluded"]),
             "exclusion_examples": manifest["excluded"][:3],
         }
