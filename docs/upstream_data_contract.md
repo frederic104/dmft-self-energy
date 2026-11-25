@@ -100,8 +100,8 @@ units and conventions are established. Spectral/DOS claims remain separate work.
 To create the comparison config on Ubuntu (does not read raw arrays or train):
 
 ```bash
-conda activate physai
-cd /home/frederic104/projects/dmft-self-energy
+conda activate environment
+cd /home/user/projects/dmft-self-energy
 python - <<'PY'
 from pathlib import Path
 import yaml
