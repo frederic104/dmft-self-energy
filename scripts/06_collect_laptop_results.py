@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import json
 import logging
 import platform
@@ -17,14 +16,13 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-import h5py
 import numpy as np
 
 from dmft_data.extraction import read_hdf5_file, software_versions
 from dmft_data.inventory import inspect_hdf5_file
+from dmft_data.provenance import sha256_file
 from dmft_data.triqs_inspection import inspect_triqs_file
 from dmft_data.validation import validate_extraction
-
 
 LOGGER = logging.getLogger(__name__)
 
@@ -47,15 +45,6 @@ def _redact_source_root(value: Any, source_root: Path) -> Any:
             for key, item in value.items()
         }
     return value
-
-
-def sha256_file(path: Path) -> str:
-    """Return a SHA-256 checksum without changing the source file."""
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _component_statistics(values: np.ndarray) -> dict[str, Any]:

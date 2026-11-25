@@ -13,6 +13,7 @@ import yaml
 
 from .convergence import assess_convergence
 from .extraction import ExtractedArray, HDF5Extraction
+from .hdf import difference_metrics
 
 
 @dataclass
@@ -138,12 +139,8 @@ def _array_validation(array: ExtractedArray) -> tuple[list[ValidationIssue], dic
 
 
 def _difference(left: np.ndarray, right: np.ndarray) -> dict[str, Any]:
-    delta = left - right
-    absolute = np.abs(delta)
     return {
-        "max_abs": float(np.max(absolute)),
-        "mean_abs": float(np.mean(absolute)),
-        "rms": float(np.sqrt(np.mean(np.abs(delta) ** 2))),
+        **difference_metrics(left, right),
         "equivalent_at_1e-12": bool(np.allclose(left, right, rtol=1e-12, atol=1e-12)),
     }
 

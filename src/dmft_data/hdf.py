@@ -24,6 +24,16 @@ def read_complex_dataset(dataset: h5py.Dataset) -> np.ndarray:
     return np.asarray(values, dtype=np.complex128)
 
 
+def difference_metrics(left: np.ndarray, right: np.ndarray) -> dict[str, float]:
+    """Descriptive absolute differences; caller determines physical meaning."""
+    absolute = np.abs(left - right)
+    return {
+        "max_abs": float(np.max(absolute)),
+        "mean_abs": float(np.mean(absolute)),
+        "rms": float(np.sqrt(np.mean(absolute**2))),
+    }
+
+
 def physical_blocks(group: h5py.Group) -> dict[str, h5py.Dataset]:
     return {
         name: block["data"]

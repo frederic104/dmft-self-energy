@@ -14,7 +14,7 @@ from typing import Any
 import h5py
 import numpy as np
 
-from .hdf import read_complex_dataset
+from .hdf import difference_metrics, read_complex_dataset
 from .provenance import sha256_file
 
 QUANTITIES = ("G", "G0", "Weiss", "hybridization", "Sigma", "spectral")
@@ -105,16 +105,6 @@ def _payloads(group: h5py.Group) -> list[dict[str, Any]]:
 
     group.visititems(visit)
     return payloads
-
-
-def _difference(left: np.ndarray, right: np.ndarray) -> dict[str, float | bool]:
-    delta = left - right
-    absolute = np.abs(delta)
-    return {
-        "max_abs": float(np.max(absolute)),
-        "mean_abs": float(np.mean(absolute)),
-        "rms": float(np.sqrt(np.mean(np.abs(delta) ** 2))),
-    }
 
 
 def inspect_triqs_file(file_path: str | Path, source_root: str | Path) -> dict[str, Any]:
@@ -230,7 +220,7 @@ def inspect_triqs_file(file_path: str | Path, source_root: str | Path) -> dict[s
                                     "to_iteration": right_name,
                                     "left_source_path": left_payload["source_path"],
                                     "right_source_path": right_payload["source_path"],
-                                    **_difference(left_values, right_values),
+                                    **difference_metrics(left_values, right_values),
                                 })
 
             metadata_values = [

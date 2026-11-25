@@ -32,6 +32,12 @@ final arrays, including BVO's final=iteration-5 behavior. Choosing
 `/dmft_output/Sigma-15` defines a different exploratory experiment; use new output
 directories and keep that choice in the saved config.
 
+The public preprocessing pairs `G0-i` with `Sigma-i`, unlike this default.
+See [source evidence and the next experiment](upstream_data_contract.md) for
+the checked notebook reference, unresolved generation semantics, and a bounded
+same-index comparison. The `summary` output reports actual prepared quantity
+pairs, including per-run selector overrides, without reading raw arrays again.
+
 ```bash
 python -m dmft_data prepare --config configs/experiment.yaml
 python -m dmft_data summary --config configs/experiment.yaml
@@ -68,6 +74,11 @@ target duplicates, and RMS spread around each mean. That spread describes these
 stored runs; it is not a Monte Carlo standard error or an effective sample size.
 Within a group, meshes and supplied conditioning parameters must agree. Different
 basis layouts need separate experiments or an explicit externally reviewed map.
+Within a group the selected input and target paths and their declared semantics
+must agree; differently staged arrays are not averaged. Different input or target
+semantics require separate experiments. Training checks that selection and
+frequency count still agree with the configuration used to prepare the data;
+changing them requires preparing a new dataset directory.
 
 For `task: primary`, add per-run reviewed fields in `run_review.json`:
 

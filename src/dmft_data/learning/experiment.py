@@ -12,7 +12,7 @@ import joblib
 import numpy as np
 
 from ..provenance import sha256_file
-from .data import load_json, write_json
+from .data import load_json, quantity_pairs, write_json
 from .models import Baseline, decode, encode
 from .splits import aggregate_groups, blocked_partition
 
@@ -68,8 +68,13 @@ def run_experiment(config: dict, root: Path) -> dict:
     records = manifest["records"]
     if manifest["task"] != config.get("task", "exploratory"):
         raise ValueError("Training task must match the prepared manifest task")
-    if len({r.get("input_semantics", "unresolved") for r in records}) > 1:
-        raise ValueError("Use separate experiments for different input semantics")
+    prepared_config = manifest.get("config", {})
+    for key, default in (("selection", {}), ("positive_frequency_count", 64)):
+        if prepared_config.get(key, default) != config.get(key, default):
+            raise ValueError(f"Training {key} differs from prepared data; prepare again")
+    for key in ("input_semantics", "target_semantics"):
+        if len({r.get(key) or "unresolved" for r in records}) > 1:
+            raise ValueError(f"Use separate experiments for different {key}")
     if len(x) != len(records):
         raise ValueError("Prepared arrays and manifest sample counts differ")
     splits = blocked_partition(records, config["split"])
@@ -97,10 +102,6 @@ def run_experiment(config: dict, root: Path) -> dict:
                 "Parameter features must be explicitly supplied finite numbers"
             )
         features = np.concatenate([features, parameters], axis=1)
-    grouped = {
-        role: aggregate_groups(features, y, records, indices)
-        for role, indices in splits.items()
-    }
     for indices in splits.values():
         for group in {records[i]["group_id"] for i in indices}:
             member_meshes = meshes[
@@ -109,9 +110,16 @@ def run_experiment(config: dict, root: Path) -> dict:
             if not all(np.array_equal(member_meshes[0], m) for m in member_meshes):
                 raise ValueError("Cannot average replicas on different meshes")
             members = [records[i] for i in indices if records[i]["group_id"] == group]
-            for key in ["material", "beta", "input_semantics", *parameter_features]:
+            for key in [
+                "material", "beta", "input_semantics", "target_semantics",
+                "input_path", "target_path", *parameter_features,
+            ]:
                 if len({str(r.get(key)) for r in members}) != 1:
                     raise ValueError(f"Inconsistent {key} within replica group {group}")
+    grouped = {
+        role: aggregate_groups(features, y, records, indices)
+        for role, indices in splits.items()
+    }
     train_x, train_y, _ = grouped["train"]
     validation_x, validation_y, _ = grouped["validation"]
     candidates = config.get(
@@ -251,6 +259,7 @@ def run_experiment(config: dict, root: Path) -> dict:
         "status": "completed",
         "task": manifest["task"],
         "interpretation": manifest["interpretation"],
+        "quantity_pairs": quantity_pairs(records),
         "aggregation": "arithmetic_mean_of_runs_per_reviewed_group",
         "declared_assumptions": config.get("assumptions", []),
         "input_semantics": sorted(

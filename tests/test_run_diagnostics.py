@@ -1,9 +1,13 @@
 """Tests for storage-only run-level HDF5 diagnostics."""
 
+import json
+import subprocess
+import sys
 from pathlib import Path
 
 import h5py
 import numpy as np
+import pytest
 
 from dmft_data.run_diagnostics import classify_hdf5_run, classify_hdf5_runs
 
@@ -113,3 +117,30 @@ def test_classifies_string_complex_marker(tmp_path: Path) -> None:
     row = classify_hdf5_run(path, root)
 
     assert row["run_status"] == "final_matches_last_iteration"
+
+
+def test_storage_cli_matches_legacy_script(tmp_path: Path) -> None:
+    root = tmp_path / "raw"
+    _write_run(root / "SVO" / "run.h5", final_source=15)
+    script = Path(__file__).resolve().parents[1] / "scripts/07_classify_hdf5_runs.py"
+    outputs = [tmp_path / "cli", tmp_path / "legacy"]
+    for command, output in zip(
+        ([sys.executable, "-m", "dmft_data", "storage"], [sys.executable, str(script)]),
+        outputs,
+    ):
+        result = subprocess.run(
+            [*command, "--source", str(root), "--output", str(output),
+             "--low-frequency-count", "3"],
+            capture_output=True, text=True, check=False,
+        )
+        assert result.returncode == 0, result.stderr
+    for name in ("run_diagnostics.json", "run_diagnostics_summary.json"):
+        assert json.loads((outputs[0] / name).read_text()) == json.loads(
+            (outputs[1] / name).read_text()
+        )
+
+
+def test_storage_source_must_exist(tmp_path: Path) -> None:
+    with pytest.raises(NotADirectoryError, match="source directory"):
+        classify_hdf5_runs(tmp_path / "missing", tmp_path / "out")
+    assert not (tmp_path / "out").exists()

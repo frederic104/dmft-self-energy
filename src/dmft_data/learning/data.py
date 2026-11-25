@@ -29,6 +29,12 @@ def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def quantity_pairs(records: list[dict]) -> list[dict]:
+    """Summarize actual reviewed selections, without inferring physical semantics."""
+    pairs = sorted({(r["input_path"], r["target_path"]) for r in records})
+    return [{"input_path": x, "target_path": y} for x, y in pairs]
+
+
 def present(value: Any) -> bool:
     return isinstance(value, str) and value.strip().lower() not in {
         "",

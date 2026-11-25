@@ -143,7 +143,8 @@ and unreviewed HDF5 flags cannot certify primary targets.
 
 ### HDF5 storage diagnostics
 
-`scripts/07_classify_hdf5_runs.py` compares final `G_iw` and `Sigma_iw`
+`python -m dmft_data storage --source data/raw/hdf5 --output reports/local/run_diagnostics`
+compares final `G_iw` and `Sigma_iw`
 blocks with every stored iteration. It reports storage equality and numerical
 differences, including a configurable low-positive-Matsubara-frequency RMS
 (`--low-frequency-count`, default 10). It is a storage/consistency diagnostic:
@@ -152,6 +153,9 @@ it does not establish DMFT convergence, and all outputs retain
 Paths under `beta-variation` are only marked `parameter_variation_candidate`
 pending metadata review. Warmup settings, iteration records, and spin/orbital
 blocks are not independent physical states.
+The older `scripts/07_classify_hdf5_runs.py` command remains available and uses
+the same implementation. An absent source directory fails clearly; an empty
+directory produces a warning rather than silently looking like a useful scan.
 
 For a fail-closed raw-data provenance audit and target/split registry, see
 [research-readiness audit](docs/research_audit.md). This creates local JSON

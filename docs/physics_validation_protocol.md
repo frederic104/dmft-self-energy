@@ -81,6 +81,6 @@ again as untouched final validation.
 
 - [APS guidance on color and grayscale figures](https://journals.aps.org/authors/guide-acceptable-color-online-figures-h24): distinguish curves beyond color alone.
 - [APS author style guide](https://res.cloudinary.com/apsphysics/image/upload/APS_Journals_Style_Guide_Authors022326_guzwhx.pdf): panel labels, captions and accessible figure design.
-- [solid_dmft output observables](https://triqs.github.io/solid_dmft/3.3.x/input_output/DMFT_output/results.html): occupancy, mu, energy and iteration-change records.
+- [solid_dmft output observables](https://triqs.github.io/solid_dmft/3.3.x/input_output/DMFT_output/results.html): an example of occupancy, mu, energy and iteration-change records. This is a separate application; its `DMFT_results` schema is not established for the source files.
 - [CTHYB moments](https://triqs.github.io/cthyb/latest/guide/high_freq_moments.html): density/interactions and stored self-energy moments.
 - [VASP EDIFF](https://vasp.at/wiki/index.php/EDIFF): SCF energy stopping criterion, distinct from self-energy approximation error.
