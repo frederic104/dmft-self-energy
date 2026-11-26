@@ -20,6 +20,39 @@ def decode(values: np.ndarray, shape: tuple[int, ...]) -> np.ndarray:
     return (real + 1j * imag).reshape((len(values), *shape))
 
 
+class EpsilonLinear:
+    """Piecewise linear target interpolation; endpoint slopes extrapolate."""
+
+    def fit(self, epsilon: np.ndarray, targets: np.ndarray):
+        epsilon = np.asarray(epsilon, dtype=float).reshape(-1)
+        if len(epsilon) < 2 or len(epsilon) != len(targets):
+            raise ValueError("Interpolation requires at least two training states")
+        order = np.argsort(epsilon)
+        self.epsilon = epsilon[order].copy()
+        self.targets = np.asarray(targets)[order].copy()
+        if not np.isfinite(self.epsilon).all() or np.any(np.diff(self.epsilon) <= 0):
+            raise ValueError("Training epsilon_d values must be finite and unique")
+        self.model = None
+        return self
+
+    def predict(self, epsilon: np.ndarray) -> np.ndarray:
+        values = np.asarray(epsilon, dtype=float).reshape(-1)
+        if not np.isfinite(values).all():
+            raise ValueError("Prediction epsilon_d must be finite")
+        left = np.clip(np.searchsorted(self.epsilon, values, side="right") - 1,
+                       0, len(self.epsilon) - 2)
+        weight = ((values - self.epsilon[left]) /
+                  (self.epsilon[left + 1] - self.epsilon[left]))
+        return self.targets[left] + weight[:, None] * (self.targets[left + 1] - self.targets[left])
+
+    def coverage(self, epsilon: np.ndarray) -> dict:
+        values = np.asarray(epsilon).reshape(-1)
+        return {"below": int(np.sum(values < self.epsilon[0])),
+                "within_inclusive": int(np.sum((values >= self.epsilon[0]) &
+                                               (values <= self.epsilon[-1]))),
+                "above": int(np.sum(values > self.epsilon[-1]))}
+
+
 class Baseline:
     """Mean, nearest neighbor, target-PCA+Ridge, or an MLP.
 

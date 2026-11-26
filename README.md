@@ -222,6 +222,31 @@ for s in 31 32 33; do
 done
 ```
 
+For the fixed-bath question, `--include-epsilon-linear` adds a baseline using
+**epsilon_d directly**. The other candidates use G0, so this is a comparison
+with different input information. It requires fixed U, bath parameters, mu and
+beta across the dataset and at least two distinct training epsilon values;
+duplicate training epsilon values are rejected. It fits only training targets,
+linearly interpolates each real and imaginary component, and extrapolates with
+the slope of the nearest endpoint pair. The latter is a deliberately simple,
+potentially unstable baseline for the blocked split, not a physical guarantee.
+Metrics record the training range and validation counts below, within and above
+that range; test coverage is recorded only when test evaluation is enabled.
+
+```bash
+python -m dmft_data.ed_baselines --dataset data/processed/ed/latent_example.npz \
+  --output reports/local/aim_linear_validation --split epsilon --seed 31 \
+  --model-seed 31 --include-latent --include-epsilon-linear --validation-only
+```
+
+The reserved high-epsilon block from an already inspected dataset remains
+exploratory. Before any final evaluation, freeze the candidate selection,
+training and evaluation protocol and reserve independently generated physical
+states; the current CLI does not evaluate an external final-test dataset.
+No interpolation or extrapolation result establishes lattice DOS accuracy or
+causality, and extrapolated values need not obey the Matsubara sign constraint.
+
+
 Inspect the per-candidate validation errors, train loss and bottleneck metrics;
 keep all seeds and identify optimization failures. The same 500-iteration limit
 does not equalize wall-clock work or model capacity. The old default also scores

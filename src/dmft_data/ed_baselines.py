@@ -12,7 +12,7 @@ import joblib
 import numpy as np
 import sklearn
 
-from .learning.models import Baseline, decode, encode
+from .learning.models import Baseline, EpsilonLinear, decode, encode
 from .learning.splits import blocked_partition
 from .provenance import sha256_file
 
@@ -60,7 +60,8 @@ def _network_diagnostics(model: Baseline, train_x: np.ndarray, val_x: np.ndarray
 
 def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
         include_latent: bool = False, model_seed: int | None = None,
-        compare_activations: bool = False, validation_only: bool = False) -> dict:
+        compare_activations: bool = False, validation_only: bool = False,
+        include_epsilon_linear: bool = False) -> dict:
     """Fit fixed-budget baselines, select on validation, evaluate test once."""
     dataset, output = Path(dataset), Path(output)
     model_seed = seed if model_seed is None else model_seed
@@ -87,6 +88,9 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
         raise ValueError("mu and beta must be fixed")
     if split != "u" and not np.all(params[:, 1] == params[0, 1]):
         raise ValueError("U must be fixed for epsilon and random splits")
+    if include_epsilon_linear and (split == "u" or
+            not np.all(params[:, 1:] == params[0, 1:])):
+        raise ValueError("epsilon linear baseline requires fixed U, bath, mu and beta")
     expected_omega = (2 * np.arange(len(omega)) + 1) * np.pi / params[0, 7]
     if params[0, 7] <= 0 or not np.allclose(omega, expected_omega):
         raise ValueError("Mesh must match the fixed beta")
@@ -136,6 +140,8 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
         candidates += [{"name": "mlp", "activation": "tanh"}]
         candidates += [{"name": "latent_mlp", "activation": "tanh", "latent_dimension": dim}
                        for dim in (1, 2, 4, 8, 16)]
+    if include_epsilon_linear:
+        candidates.append({"name": "epsilon_linear", "input": "epsilon_d"})
     trained, validation, fit_warnings, validation_details = {}, {}, {}, {}
     network_diagnostics = {}
     for spec in candidates:
@@ -146,17 +152,21 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
             name = f"{name}_{spec['latent_dimension']}"
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            model = Baseline(spec, model_seed).fit(x[splits["train"]], y[splits["train"]])
+            model = (EpsilonLinear().fit(params[splits["train"], 0], y[splits["train"]])
+                     if name == "epsilon_linear" else
+                     Baseline(spec, model_seed).fit(x[splits["train"]], y[splits["train"]]))
         fit_warnings[name] = [str(item.message) for item in caught]
         if spec["name"] in {"mlp", "latent_mlp"}:
             network_diagnostics[name] = _network_diagnostics(
                 model, x[splits["train"]], x[splits["validation"]]
             )
-        prediction = decode(model.predict(x[splits["validation"]]), sigma.shape[1:])
+        val_input = params[splits["validation"], 0] if name == "epsilon_linear" else x[splits["validation"]]
+        train_input = params[splits["train"], 0] if name == "epsilon_linear" else x[splits["train"]]
+        prediction = decode(model.predict(val_input), sigma.shape[1:])
         validation[name] = float(np.sqrt(np.mean(np.abs(
             prediction - sigma[splits["validation"]]) ** 2)))
         delta = prediction - sigma[splits["validation"]]
-        train_prediction = decode(model.predict(x[splits["train"]]), sigma.shape[1:])
+        train_prediction = decode(model.predict(train_input), sigma.shape[1:])
         train_delta = train_prediction - sigma[splits["train"]]
         validation_details[name] = {
             "complex_rmse": validation[name],
@@ -189,6 +199,15 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
         "evaluation_phase": "validation_only" if validation_only else "exploratory_test",
         "note": "Exploratory finite-bath AIM; not lattice DMFT or a final test.",
     }
+    if include_epsilon_linear:
+        linear = trained["epsilon_linear"]
+        metrics["epsilon_linear"] = {
+            "input": "epsilon_d only; other candidates use G0",
+            "policy": "piecewise linear interpolation; linear extrapolation using nearest endpoint pair",
+            "duplicate_training_epsilon": "error",
+            "training_range": [float(linear.epsilon[0]), float(linear.epsilon[-1])],
+            "validation_coverage": linear.coverage(params[splits["validation"], 0]),
+        }
     output.mkdir(parents=True)
     diagnostics = {
         "interpretation": "Oracle offsets use test targets and are descriptive only; "
@@ -197,7 +216,10 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
         "test_samples": [],
     }
     if not validation_only:
-        prediction = decode(trained[selected].predict(x[splits["test"]]), sigma.shape[1:])
+        test_input = params[splits["test"], 0] if selected == "epsilon_linear" else x[splits["test"]]
+        prediction = decode(trained[selected].predict(test_input), sigma.shape[1:])
+        if include_epsilon_linear:
+            metrics["epsilon_linear"]["test_coverage"] = linear.coverage(params[splits["test"], 0])
         target = sigma[splits["test"]]
         difference = prediction - target
         metrics.update({
@@ -265,10 +287,12 @@ def main():
                         help="Also compare tanh with ReLU in all MLP hidden layers")
     parser.add_argument("--validation-only", action="store_true",
                         help="Do not predict or score the reserved test samples")
+    parser.add_argument("--include-epsilon-linear", action="store_true",
+                        help="Add epsilon_d interpolation with endpoint linear extrapolation (fixed bath/U only)")
     args = parser.parse_args()
     print(json.dumps(run(args.dataset, args.output, args.seed, args.split,
                          args.include_latent, args.model_seed, args.compare_activations,
-                         args.validation_only), indent=2))
+                         args.validation_only, args.include_epsilon_linear), indent=2))
 
 
 if __name__ == "__main__":
