@@ -51,10 +51,12 @@ def test_latent_candidates_use_same_training_split_and_report_diagnostics(tmp_pa
     data = tmp_path / "latent.npz"
     generate_small_dataset(data, samples=30, seed=31, frequency_count=8, fixed_u=2,
                            fixed_bath=(-1, 1, 0.5, 0.7))
-    result = run(data, tmp_path / "out", seed=31, split="random", include_latent=True)
+    result = run(data, tmp_path / "out", seed=31, split="random", include_latent=True,
+                 compare_activations=True, validation_only=True)
     expected = {"mean", "nearest", "mlp"} | {
         f"{name}_{dim}" for name in ("pca_ridge", "latent_mlp") for dim in (1, 2, 4, 8, 16)
     }
+    expected |= {"mlp_tanh"} | {f"latent_mlp_tanh_{dim}" for dim in (1, 2, 4, 8, 16)}
     assert set(result["validation_complex_rmse"]) == expected
     assert result["selected"] in expected
     for dim in (1, 2, 4, 8, 16):
@@ -64,6 +66,14 @@ def test_latent_candidates_use_same_training_split_and_report_diagnostics(tmp_pa
     with np.load(data) as arrays:
         x = encode(arrays["g0"])
         reduced = {key: arrays[key].copy() for key in arrays.files}
+    perturbed = {key: value.copy() for key, value in reduced.items()}
+    perturbed["sigma"][result["splits"]["test"]] += 17j
+    np.savez(tmp_path / "perturbed.npz", **perturbed)
+    other = run(tmp_path / "perturbed.npz", tmp_path / "perturbed_out", seed=31,
+                split="random", include_latent=True, compare_activations=True,
+                validation_only=True)
+    assert result["validation_complex_rmse"] == other["validation_complex_rmse"]
+    assert result["selected"] == other["selected"]
     reduced["omega"] = reduced["omega"][:4]
     for key in ("g0", "green", "sigma"):
         reduced[key] = reduced[key][:, :4]
@@ -73,8 +83,9 @@ def test_latent_candidates_use_same_training_split_and_report_diagnostics(tmp_pa
             split="random", include_latent=True)
     selected = joblib.load(tmp_path / "out" / "selected_model.joblib")
     np.testing.assert_allclose(selected.x_scaler.mean_, x[result["splits"]["train"]].mean(axis=0))
-    assert np.isfinite(result["test_real_rmse"])
-    assert 0 <= result["test_positive_imaginary_fraction"] <= 1
+    assert result["evaluation_phase"] == "validation_only"
+    assert "test_real_rmse" not in result
+    assert not (tmp_path / "out" / "test_predictions.npz").exists()
     import json
 
     diagnostics = json.loads((tmp_path / "out" / "diagnostics.json").read_text())
@@ -84,13 +95,10 @@ def test_latent_candidates_use_same_training_split_and_report_diagnostics(tmp_pa
         "optimizer_iterations"
     ]
     assert set(networks["latent_mlp_4"]["bottleneck"]) == {"train", "validation"}
-    assert [row["index"] for row in diagnostics["test_samples"]] == result["splits"]["test"]
-    with np.load(tmp_path / "out" / "test_predictions.npz") as saved:
-        err = (saved["prediction"] - saved["reference"]).real
-        np.testing.assert_allclose(
-            [row["oracle_real_offset"] for row in diagnostics["test_samples"]],
-            err.mean(axis=1),
-        )
+    assert networks["latent_mlp_tanh_4"]["activation"] == "tanh"
+    assert "saturated_fraction_abs_ge_099" in networks["latent_mlp_tanh_4"]["bottleneck"]["train"]
+    assert "unit_never_positive_count" not in networks["latent_mlp_tanh_4"]["bottleneck"]["train"]
+    assert diagnostics["test_samples"] == []
 
 
 def test_latent_model_has_requested_bottleneck():
@@ -106,7 +114,7 @@ def test_latent_model_has_requested_bottleneck():
 def test_bottleneck_diagnostics_count_observed_inactive_units():
     network = SimpleNamespace(
         loss_curve_=[1.0, 0.5], max_iter=10, tol=1e-4, n_iter_no_change=10,
-        early_stopping=False, solver="adam", learning_rate_init=0.001,
+        early_stopping=False, solver="adam", learning_rate_init=0.001, activation="relu",
         batch_size="auto", alpha=0.001,
         coefs_=[np.array([[1., -1.]]), np.array([[1., 0.], [0., 0.]])],
         intercepts_=[np.zeros(2), np.zeros(2)],
@@ -122,3 +130,9 @@ def test_bottleneck_diagnostics_count_observed_inactive_units():
     assert train["positive_activation_fraction"] == 0.25
     assert train["mean_per_unit_standard_deviation"] == 0.25
     assert result["bottleneck"]["validation"]["unit_never_positive_count"] == 2
+    network.activation = "tanh"
+    result = _network_diagnostics(model, np.array([[-1.], [1.]]), np.array([[-2.], [-1.]]))
+    train = result["bottleneck"]["train"]
+    assert train["positive_activation_fraction"] == 0.25
+    assert "unit_never_positive_count" not in train
+    assert train["saturated_fraction_abs_ge_099"] == 0.0

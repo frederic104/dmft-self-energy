@@ -10,6 +10,29 @@ in strongly correlated materials.
 The objective is to develop a computationally efficient
 surrogate that complements DFT+DMFT calculations.
 
+## Research workflow
+
+Use the smallest experiment that can answer a stated question and change the
+next decision. For exploratory work, keep input and target meanings explicit,
+check the ED limiting cases or Track A source evidence, keep state groups and
+partitions separate, and compare simple baselines. Investigate extra diagnostics
+when they explain a result; publication-scale checks are not required after every
+small run. Preserve a new untouched test for the final frozen comparison.
+
+The fixed-bath AIM is a controlled reference, not a real-material calculation.
+The original [Mitra and Banerjee study](https://doi.org/10.1038/s41524-026-02277-6)
+already predicts self-energy from non-interacting Green functions; that mapping
+alone is not a novelty claim. [Arsenault et al.](https://doi.org/10.1103/PhysRevB.90.155136)
+examined AIM Green-function representations and training-set size. A materials
+study of [out-of-distribution evaluation](https://doi.org/10.1038/s43246-024-00731-w)
+shows why coverage and the intended holdout matter; it does not make a random
+split invalid for an explicitly labeled interpolation question. Reproducibility
+guidance such as the [NeurIPS program report](https://www.jmlr.org/papers/v22/20-303.html)
+motivates recording settings and variability. These sources inform the workflow,
+not universal numerical acceptance thresholds or a claim of novelty.
+For connecting ED to DMFT later, finite-bath accuracy and bath-size effects need
+their own assessment, as in [Liebsch and Ishida](https://arxiv.org/abs/1109.0158).
+
 ## Current Scope
 
 The initial development focuses on Track A:
@@ -180,6 +203,32 @@ The MLP decoder is unconstrained: sign checks on sampled Matsubara points do not
 prove causality. Causal decoders and real-frequency property reconstruction
 remain subsequent work, not part of this comparison. Preserve a separate final
 test before making research claims; previously inspected tests are exploratory.
+
+For a targeted training-stability question, use `--compare-activations` with
+`--include-latent --validation-only` and repeat a prespecified set of
+`--model-seed` values into separate directories. This adds matched tanh variants
+of the direct and latent MLPs; tanh applies to **all hidden layers**, not only
+the bottleneck. The validation-only option does not predict or score reserved
+test samples, but it still reads the local dataset. Model initialization seeds
+on the same physical states are not independent samples. The output records
+activation, stopping settings, warnings and train/validation bottleneck behavior;
+tanh saturation is reported instead of calling negative tanh activations dead.
+
+```bash
+for s in 31 32 33; do
+  python -m dmft_data.ed_baselines --dataset data/processed/ed/latent_example.npz \
+    --output "reports/local/activation_seed_${s}" --split epsilon --seed 31 \
+    --model-seed "$s" --include-latent --compare-activations --validation-only || break
+done
+```
+
+Inspect the per-candidate validation errors, train loss and bottleneck metrics;
+keep all seeds and identify optimization failures. The same 500-iteration limit
+does not equalize wall-clock work or model capacity. The old default also scores
+the exploratory test; use `--validation-only` while developing, and freeze a
+protocol with a fresh independent test before a final claim. Current sign checks
+are sampled necessary conditions, not proof of causality; spectral properties
+and lattice DOS remain later, separate analyses.
 
 The fixed-bath example is a one-parameter family, but a one-dimensional nonlinear
 curve need not be well represented by one linear PCA component. The exploratory

@@ -63,6 +63,7 @@ class Baseline:
                 self.actual_dimension = dimension
             self.model = MLPRegressor(
                 hidden_layer_sizes=hidden,
+                activation=self.specification.get("activation", "relu"),
                 alpha=self.specification.get("alpha", 1e-3),
                 max_iter=self.specification.get("max_iter", 500),
                 random_state=self.seed,
