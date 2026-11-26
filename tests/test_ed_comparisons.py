@@ -20,11 +20,22 @@ def test_external_evaluation_checks_dataset_and_separates_coverage(tmp_path):
     generate_small_dataset(external, samples=20, seed=99, frequency_count=8, fixed_u=2,
                            fixed_bath=(-1, 1, .5, .7))
     run(development, tmp_path / "validation", seed=31, split="epsilon",
-        validation_only=True, include_epsilon_linear=True)
+        validation_only=True, include_epsilon_linear=True, save_candidates=True)
     report = evaluate(development, tmp_path / "validation", external, tmp_path / "evaluation")
     assert sum(g["count"] for g in report["groups"].values()) == 20
     assert all(g["count"] for g in report["groups"].values())
     assert (tmp_path / "evaluation" / "predictions.npz").exists()
+    comparison = evaluate(development, tmp_path / "validation", external,
+                          tmp_path / "comparison", all_candidates=True)
+    assert set(comparison["candidate_groups"]) == {"mean", "nearest", "mlp", "pca_ridge", "epsilon_linear"}
+    assert comparison["groups"] == comparison["candidate_groups"][comparison["selected"]]
+    for groups in comparison["candidate_groups"].values():
+        assert [g["count"] for g in groups.values()] == [g["count"] for g in report["groups"].values()]
+    with open(tmp_path / "validation" / "candidates.joblib", "ab") as bundle:
+        bundle.write(b"tampered")
+    with pytest.raises(ValueError, match="does not match"):
+        evaluate(development, tmp_path / "validation", external, tmp_path / "tampered",
+                 all_candidates=True)
     with pytest.raises(FileExistsError):
         evaluate(development, tmp_path / "validation", external, tmp_path / "evaluation")
     with pytest.raises(ValueError, match="distinct"):
@@ -133,7 +144,7 @@ def test_latent_candidates_use_same_training_split_and_report_diagnostics(tmp_pa
     generate_small_dataset(data, samples=30, seed=31, frequency_count=8, fixed_u=2,
                            fixed_bath=(-1, 1, 0.5, 0.7))
     result = run(data, tmp_path / "out", seed=31, split="random", include_latent=True,
-                 compare_activations=True, validation_only=True)
+                 compare_activations=True, validation_only=True, save_candidates=True)
     expected = {"mean", "nearest", "mlp"} | {
         f"{name}_{dim}" for name in ("pca_ridge", "latent_mlp") for dim in (1, 2, 4, 8, 16)
     }
@@ -152,9 +163,14 @@ def test_latent_candidates_use_same_training_split_and_report_diagnostics(tmp_pa
     np.savez(tmp_path / "perturbed.npz", **perturbed)
     other = run(tmp_path / "perturbed.npz", tmp_path / "perturbed_out", seed=31,
                 split="random", include_latent=True, compare_activations=True,
-                validation_only=True)
+                validation_only=True, save_candidates=True)
     assert result["validation_complex_rmse"] == other["validation_complex_rmse"]
     assert result["selected"] == other["selected"]
+    saved = joblib.load(tmp_path / "out" / "candidates.joblib")
+    repeated = joblib.load(tmp_path / "perturbed_out" / "candidates.joblib")
+    for name in saved:
+        np.testing.assert_allclose(saved[name].predict(x[result["splits"]["validation"]]),
+                                   repeated[name].predict(x[result["splits"]["validation"]]))
     reduced["omega"] = reduced["omega"][:4]
     for key in ("g0", "green", "sigma"):
         reduced[key] = reduced[key][:, :4]
