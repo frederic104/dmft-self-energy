@@ -242,7 +242,23 @@ python -m dmft_data.ed_baselines --dataset data/processed/ed/latent_example.npz 
 The reserved high-epsilon block from an already inspected dataset remains
 exploratory. Before any final evaluation, freeze the candidate selection,
 training and evaluation protocol and reserve independently generated physical
-states; the current CLI does not evaluate an external final-test dataset.
+states. A saved validation winner can be evaluated once with:
+
+```bash
+python -m dmft_data.ed_external_test \
+  --development data/processed/ed/latent_example.npz \
+  --result reports/local/aim_linear_validation \
+  --test data/processed/ed/independent_final.npz \
+  --output reports/local/independent_final_evaluation
+```
+
+Use only trusted local joblib artifacts. The evaluator verifies the development
+dataset hash, fixed parameters, exact frequency mesh and distinct physical
+states; it cannot establish that a dataset was never previously examined. It
+uses the saved validation winner without refitting and reports errors separately
+below, within, and above its training epsilon range. Only the selected model is
+saved by the validation workflow, so this does not compare every candidate on the
+external set. Freeze the protocol before using a genuinely independent test.
 No interpolation or extrapolation result establishes lattice DOS accuracy or
 causality, and extrapolated values need not obey the Matsubara sign constraint.
 

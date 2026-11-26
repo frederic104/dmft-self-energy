@@ -8,8 +8,33 @@ import pytest
 
 from dmft_data.ed import generate_small_dataset
 from dmft_data.ed_baselines import EpsilonLinear, _network_diagnostics, run
+from dmft_data.ed_external_test import evaluate
 from dmft_data.ed_plot import plot
 from dmft_data.learning.models import Baseline, encode
+
+
+def test_external_evaluation_checks_dataset_and_separates_coverage(tmp_path):
+    development, external = tmp_path / "dev.npz", tmp_path / "external.npz"
+    generate_small_dataset(development, samples=30, seed=31, frequency_count=8, fixed_u=2,
+                           fixed_bath=(-1, 1, .5, .7))
+    generate_small_dataset(external, samples=20, seed=99, frequency_count=8, fixed_u=2,
+                           fixed_bath=(-1, 1, .5, .7))
+    run(development, tmp_path / "validation", seed=31, split="epsilon",
+        validation_only=True, include_epsilon_linear=True)
+    report = evaluate(development, tmp_path / "validation", external, tmp_path / "evaluation")
+    assert sum(g["count"] for g in report["groups"].values()) == 20
+    assert all(g["count"] for g in report["groups"].values())
+    assert (tmp_path / "evaluation" / "predictions.npz").exists()
+    with pytest.raises(FileExistsError):
+        evaluate(development, tmp_path / "validation", external, tmp_path / "evaluation")
+    with pytest.raises(ValueError, match="distinct"):
+        evaluate(development, tmp_path / "validation", development, tmp_path / "overlap")
+    with np.load(external) as arrays:
+        data = {key: arrays[key].copy() for key in arrays.files}
+    data["omega"] += 1
+    np.savez(tmp_path / "mesh.npz", **data)
+    with pytest.raises(ValueError, match="meshes differ"):
+        evaluate(development, tmp_path / "validation", tmp_path / "mesh.npz", tmp_path / "bad")
 
 
 def test_epsilon_linear_interpolation_extrapolation_and_duplicate_policy():
