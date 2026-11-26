@@ -61,7 +61,9 @@ def _network_diagnostics(model: Baseline, train_x: np.ndarray, val_x: np.ndarray
 def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
         include_latent: bool = False, model_seed: int | None = None,
         compare_activations: bool = False, validation_only: bool = False,
-        include_epsilon_linear: bool = False, save_candidates: bool = False) -> dict:
+        include_epsilon_linear: bool = False, save_candidates: bool = False,
+        include_ridge: bool = False, validation_bath_scale: float | None = None,
+        test_bath_scale: float | None = None) -> dict:
     """Fit fixed-budget baselines, select on validation, evaluate test once."""
     dataset, output = Path(dataset), Path(output)
     model_seed = seed if model_seed is None else model_seed
@@ -76,6 +78,7 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
         params, g0, sigma, omega = (data[k].copy() for k in (
             "parameters", "g0", "sigma", "omega"
         ))
+        bath_scale = data["bath_scale"].copy() if "bath_scale" in data else None
     expected = ["epsilon_d", "interaction_u", "epsilon_b0", "epsilon_b1", "V_b0",
                 "V_b1", "chemical_potential", "beta"]
     if columns != expected or params.ndim != 2 or params.shape[1] != 8 or not len(params):
@@ -84,23 +87,43 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
             or not all(np.isfinite(a).all() for a in (params, g0, sigma, omega))
             or np.any(omega <= 0)):
         raise ValueError("Invalid arrays or Matsubara mesh")
-    if split not in {"epsilon", "random", "u"}:
-        raise ValueError("split must be epsilon, random, or u")
+    if split not in {"epsilon", "random", "u", "bath"}:
+        raise ValueError("split must be epsilon, random, u, or bath")
+    if split != "bath" and (validation_bath_scale is not None or test_bath_scale is not None):
+        raise ValueError("Bath holdout scales require split=bath")
     if not all(np.all(params[:, i] == params[0, i]) for i in (6, 7)):
         raise ValueError("mu and beta must be fixed")
     if split != "u" and not np.all(params[:, 1] == params[0, 1]):
-        raise ValueError("U must be fixed for epsilon and random splits")
+        raise ValueError("U must be fixed for epsilon, random and bath splits")
     if include_epsilon_linear and (split == "u" or
             not np.all(params[:, 1:] == params[0, 1:])):
         raise ValueError("epsilon linear baseline requires fixed U, bath, mu and beta")
     expected_omega = (2 * np.arange(len(omega)) + 1) * np.pi / params[0, 7]
     if params[0, 7] <= 0 or not np.allclose(omega, expected_omega):
         raise ValueError("Mesh must match the fixed beta")
+    if split == "bath":
+        if (bath_scale is None or bath_scale.shape != (len(params),)
+                or not np.isfinite(bath_scale).all() or np.any(bath_scale <= 0)):
+            raise ValueError("Bath split requires finite positive bath_scale per state")
+        if (validation_bath_scale not in bath_scale or test_bath_scale not in bath_scale
+                or validation_bath_scale == test_bath_scale or len(np.unique(bath_scale)) < 3):
+            raise ValueError("Specify distinct observed validation/test bath scales and leave training scales")
+        base_couplings = params[:, 4:6] / bath_scale[:, None]
+        if (not np.all(params[:, 2:4] == params[0, 2:4])
+                or not np.allclose(base_couplings, base_couplings[0], rtol=1e-12, atol=1e-14)
+                or not np.any(base_couplings[0] != 0)):
+            raise ValueError("bath_scale labels do not describe a common bath with scaled couplings")
+        epsilon_groups = [np.sort(params[bath_scale == s, 0]) for s in np.unique(bath_scale)]
+        if any(not np.array_equal(values, epsilon_groups[0]) for values in epsilon_groups[1:]):
+            raise ValueError("Controlled bath split requires matched epsilon_d values across scales")
     records = []
     for i, row in enumerate(params):
         bath = sorted(((row[2], abs(row[4])), (row[3], abs(row[5]))))
         group = repr((row[0], row[1], bath, row[6], row[7]))
-        if split == "u":
+        if split == "bath":
+            block = "validation" if bath_scale[i] == validation_bath_scale else (
+                "test" if bath_scale[i] == test_bath_scale else "train")
+        elif split == "u":
             block = "validation" if 1.5 <= row[1] < 2.0 else (
                 "test" if 2.0 <= row[1] < 2.5 else "train"
             )
@@ -121,12 +144,15 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
                   "train": order[n_test + n_val:].tolist()}
         rule = "random physical-state split: 60% train, 20% validation, 20% test"
     else:
-        validation_block, test_block = ("validation", "test") if split == "u" else ("low", "high")
+        validation_block, test_block = ("validation", "test") if split in {"u", "bath"} else ("low", "high")
         splits = blocked_partition(records, {"dimension": "parameter_block",
                                              "validation": [validation_block],
                                              "test": [test_block]})
         rule = ("U: validation [1.5,2); test [2,2.5); train remainder" if split == "u"
                 else "epsilon_d: validation < -0.6; train [-0.6,-0.2); test >= -0.2")
+        if split == "bath":
+            rule = (f"bath scale: validation {validation_bath_scale}; test {test_bath_scale}; "
+                    "train remaining scales; epsilon_d shared across baths")
     x, y = encode(g0), encode(sigma)
     if split == "u":
         x = np.column_stack((x, params[:, 1]))
@@ -144,6 +170,8 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
                        for dim in (1, 2, 4, 8, 16)]
     if include_epsilon_linear:
         candidates.append({"name": "epsilon_linear", "input": "epsilon_d"})
+    if include_ridge:
+        candidates.append({"name": "ridge", "alpha": 1.0})
     trained, validation, fit_warnings, validation_details = {}, {}, {}, {}
     network_diagnostics = {}
     for spec in candidates:
@@ -209,6 +237,14 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
             "duplicate_training_epsilon": "error",
             "training_range": [float(linear.epsilon[0]), float(linear.epsilon[-1])],
             "validation_coverage": linear.coverage(params[splits["validation"], 0]),
+        }
+    if split == "bath":
+        train_scales = np.unique(bath_scale[splits["train"]])
+        metrics["bath_holdout"] = {
+            "scales_by_split": {role: np.unique(bath_scale[idx]).tolist() for role, idx in splits.items()},
+            "validation_within_training_scale_range": bool(train_scales.min() < validation_bath_scale < train_scales.max()),
+            "unit": "AIM state; bath scale held out as a group",
+            "interpretation": "Matched epsilon_d across baths probes bath transfer, not unseen epsilon_d or materials.",
         }
     output.mkdir(parents=True)
     if save_candidates:
@@ -287,7 +323,11 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--model-seed", type=int, help="Model initialization seed (default: split seed)")
-    parser.add_argument("--split", choices=("epsilon", "random", "u"), default="epsilon")
+    parser.add_argument("--split", choices=("epsilon", "random", "u", "bath"), default="epsilon")
+    parser.add_argument("--validation-bath-scale", type=float)
+    parser.add_argument("--test-bath-scale", type=float)
+    parser.add_argument("--include-ridge", action="store_true",
+                        help="Add full-target Ridge with alpha=1, matching PCA+Ridge preprocessing")
     parser.add_argument("--include-latent", action="store_true",
                         help="Compare PCA and unconstrained MLP bottlenecks 1, 2, 4, 8, 16")
     parser.add_argument("--compare-activations", action="store_true",
@@ -302,7 +342,8 @@ def main():
     print(json.dumps(run(args.dataset, args.output, args.seed, args.split,
                          args.include_latent, args.model_seed, args.compare_activations,
                          args.validation_only, args.include_epsilon_linear,
-                         args.save_candidates), indent=2))
+                         args.save_candidates, args.include_ridge,
+                         args.validation_bath_scale, args.test_bath_scale), indent=2))
 
 
 if __name__ == "__main__":

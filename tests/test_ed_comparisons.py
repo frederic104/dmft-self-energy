@@ -15,6 +15,65 @@ from dmft_data.learning.models import Baseline, encode
 from dmft_data.provenance import sha256_file
 
 
+def test_controlled_bath_scale_physics_and_holdout(tmp_path):
+    dataset = tmp_path / "bath.npz"
+    meta = generate_small_dataset(dataset, samples=10, seed=31, frequency_count=8,
+                                  fixed_u=2, fixed_bath=(-1, 1, .5, .7),
+                                  bath_scales=(.7, .85, 1., 1.15, 1.3))
+    assert meta["samples"] == 50
+    assert meta["samples_per_bath"] == 10
+    assert meta["fixed_bath"] is None
+    with np.load(dataset) as data:
+        arrays = {key: data[key].copy() for key in data.files}
+    p, s, w = arrays["parameters"], arrays["bath_scale"], arrays["omega"]
+    for scale in np.unique(s):
+        np.testing.assert_array_equal(p[s == scale, 0], p[s == 1., 0])
+        delta = 1j * w - p[s == scale, 0, None] - 1 / arrays["g0"][s == scale]
+        expected = scale**2 * (.5**2 / (1j * w + 1) + .7**2 / (1j * w - 1))
+        np.testing.assert_allclose(delta, np.broadcast_to(expected, delta.shape), atol=1e-14)
+    kwargs = {"split": "bath", "validation_bath_scale": .85, "test_bath_scale": 1.15,
+              "validation_only": True, "include_ridge": True, "save_candidates": True}
+    result = run(dataset, tmp_path / "out", **kwargs)
+    assert result["bath_holdout"]["scales_by_split"] == {
+        "train": [.7, 1., 1.3], "validation": [.85], "test": [1.15]}
+    assert result["bath_holdout"]["validation_within_training_scale_range"] is True
+    assert "ridge" in result["validation_complex_rmse"]
+    assert "test_complex_rmse" not in result
+    models = joblib.load(tmp_path / "out" / "candidates.joblib")
+    np.testing.assert_allclose(models["ridge"].x_scaler.mean_,
+                               encode(arrays["g0"])[result["splits"]["train"]].mean(axis=0))
+    analyze(dataset, tmp_path / "out", tmp_path / "frequency")
+    arrays["sigma"][result["splits"]["test"]] += 100j
+    np.savez(tmp_path / "changed.npz", **arrays)
+    other = run(tmp_path / "changed.npz", tmp_path / "other", **kwargs)
+    assert result["validation_complex_rmse"] == other["validation_complex_rmse"]
+    with pytest.raises(ValueError, match="requires fixed U, bath"):
+        run(dataset, tmp_path / "bad_linear", include_epsilon_linear=True, **kwargs)
+    with pytest.raises(ValueError, match="distinct observed"):
+        run(dataset, tmp_path / "bad_holdout", split="bath",
+            validation_bath_scale=.9, test_bath_scale=1.15)
+    arrays["bath_scale"][0] = .85
+    np.savez(tmp_path / "bad_labels.npz", **arrays)
+    with pytest.raises(ValueError, match="labels"):
+        run(tmp_path / "bad_labels.npz", tmp_path / "bad_labels", **kwargs)
+
+
+@pytest.mark.parametrize("scales", [(0., 1.), (.8, .8), (np.nan, 1.), ()])
+def test_invalid_bath_scales_are_rejected(tmp_path, scales):
+    with pytest.raises(ValueError, match="unique positive"):
+        generate_small_dataset(tmp_path / "bad.npz", fixed_u=2,
+                               fixed_bath=(-1, 1, .5, .7), bath_scales=scales)
+
+
+def test_full_target_ridge_matches_untruncated_pca_ridge():
+    rng = np.random.default_rng(7)
+    x, y = rng.normal(size=(20, 4)), rng.normal(size=(20, 6))
+    query = rng.normal(size=(5, 4))
+    full = Baseline({"name": "ridge", "alpha": 1.}, 0).fit(x, y)
+    compressed = Baseline({"name": "pca_ridge", "latent_dimension": 6, "alpha": 1.}, 0).fit(x, y)
+    np.testing.assert_allclose(full.predict(query), compressed.predict(query), atol=1e-12)
+
+
 def test_external_evaluation_checks_dataset_and_separates_coverage(tmp_path):
     development, external = tmp_path / "dev.npz", tmp_path / "external.npz"
     generate_small_dataset(development, samples=30, seed=31, frequency_count=8, fixed_u=2,
