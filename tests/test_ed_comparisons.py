@@ -7,9 +7,65 @@ import numpy as np
 import pytest
 
 from dmft_data.ed import generate_small_dataset
-from dmft_data.ed_baselines import _network_diagnostics, run
+from dmft_data.ed_baselines import EpsilonLinear, _network_diagnostics, run
 from dmft_data.ed_plot import plot
 from dmft_data.learning.models import Baseline, encode
+
+
+def test_epsilon_linear_interpolation_extrapolation_and_duplicate_policy():
+    model = EpsilonLinear().fit(np.array([2., 0., 1.]),
+                                np.array([[4., -2.], [0., 0.], [1., -1.]]))
+    np.testing.assert_allclose(model.predict(np.array([-1., 0., .5, 2., 3.])),
+                               [[-1., 1.], [0., 0.], [.5, -.5], [4., -2.], [7., -3.]])
+    assert model.coverage(np.array([-1., 0., 2., 3.])) == {
+        "below": 1, "within_inclusive": 2, "above": 1}
+    with pytest.raises(ValueError, match="unique"):
+        EpsilonLinear().fit(np.array([0., 0.]), np.ones((2, 2)))
+    with pytest.raises(ValueError, match="at least two"):
+        EpsilonLinear().fit(np.array([0.]), np.ones((1, 2)))
+
+
+def test_epsilon_linear_fixed_bath_validation_and_test_isolation(tmp_path):
+    data = tmp_path / "fixed.npz"
+    generate_small_dataset(data, samples=30, seed=31, frequency_count=8, fixed_u=2,
+                           fixed_bath=(-1, 1, .5, .7))
+    result = run(data, tmp_path / "out", seed=31, split="epsilon",
+                 validation_only=True, include_epsilon_linear=True)
+    info = result["epsilon_linear"]
+    assert info["validation_coverage"]["below"] == len(result["splits"]["validation"])
+    assert "test_coverage" not in info
+    assert "epsilon_linear" in result["validation_complex_rmse"]
+    with np.load(data) as arrays:
+        changed = {key: arrays[key].copy() for key in arrays.files}
+    changed["sigma"][result["splits"]["test"]] += 50j
+    np.savez(tmp_path / "changed.npz", **changed)
+    other = run(tmp_path / "changed.npz", tmp_path / "other", seed=31, split="epsilon",
+                validation_only=True, include_epsilon_linear=True)
+    assert result["validation_complex_rmse"] == other["validation_complex_rmse"]
+    assert result["selected"] == other["selected"]
+    changed["parameters"][0, 2] += 1
+    np.savez(tmp_path / "vary_bath.npz", **changed)
+    with pytest.raises(ValueError, match="requires fixed U, bath"):
+        run(tmp_path / "vary_bath.npz", tmp_path / "invalid", include_epsilon_linear=True)
+
+
+def test_selected_linear_model_is_persisted_and_used_on_exploratory_test(tmp_path):
+    data = tmp_path / "fixed.npz"
+    generate_small_dataset(data, samples=30, seed=31, frequency_count=8, fixed_u=2,
+                           fixed_bath=(-1, 1, .5, .7))
+    with np.load(data) as arrays:
+        linear_data = {key: arrays[key].copy() for key in arrays.files}
+    linear_data["sigma"] = np.broadcast_to(
+        linear_data["parameters"][:, 0, None] * (1 + 1j), linear_data["sigma"].shape
+    ).copy()
+    np.savez(data, **linear_data)
+    result = run(data, tmp_path / "out", seed=31, include_epsilon_linear=True)
+    assert result["selected"] == "epsilon_linear"
+    assert result["test_complex_rmse"] < 1e-12
+    assert result["epsilon_linear"]["test_coverage"]["above"] == len(result["splits"]["test"])
+    model = joblib.load(tmp_path / "out" / "selected_model.joblib")
+    assert type(model).__module__ == "dmft_data.learning.models"
+    assert model.targets.shape[0] == len(result["splits"]["train"])
 
 
 def test_controlled_bath_and_reproducible_random_split(tmp_path):
