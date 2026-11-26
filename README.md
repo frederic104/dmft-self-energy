@@ -198,6 +198,18 @@ or equal tuning. Validation and test data must never be used for fitting scalers
 or PCA. These diagnostics do not prove causality or establish the self-energy
 high-frequency moment, and they do not assess lattice DOS.
 
+`diagnostics.json` also records each MLP's training loss curve and convergence
+settings. The loss is scikit-learn's regularized objective on standardized
+targets, not the complex RMSE in native units; iteration counts alone do not
+identify why optimization stopped. For each latent MLP, the train and validation
+summaries count bottleneck units that were never positive, samples with all-zero
+bottlenecks, and activation variability. "Never positive" is an observation on
+the specified samples, not proof that a unit can never activate. These diagnostics
+do not use test inputs or targets and do not establish physical meaning of a
+latent coordinate. Compare parameter counts as well as bottleneck dimensions:
+a narrow representation does not imply fewer trainable parameters. Model seeds
+on one fixed split are repeated initializations, not independent physical states.
+
 ## Recommended learning workflow
 
 On the Ubuntu machine, activate `physai` and work in
