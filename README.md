@@ -152,6 +152,34 @@ metrics include split indices, seed, model settings and fit warnings. All test
 figures and metrics are exploratory once examined; do not use them as untouched
 final evaluation. The chosen fixed bath and intervals are illustrative.
 
+### Latent comparison (exploratory)
+
+The fixed-bath interpolation run found nearest neighbor competitive, while the
+blocked run was harder. This motivates comparing compression and a nonlinear
+bottleneck against the same baselines before adding a causal decoder. It does
+not establish a generalization or novelty claim.
+
+Use a fresh dataset and output directory, for example:
+
+```bash
+python -m dmft_data.ed --output data/processed/ed/latent_example.npz --samples 100 --seed 31 --fixed-u 2 --beta 20 --fixed-bath -1 1 0.5 0.7
+python -m dmft_data.ed_baselines --dataset data/processed/ed/latent_example.npz --output reports/local/aim_latent_random --split random --seed 31 --include-latent
+```
+
+`--include-latent` compares PCA+Ridge and unconstrained deterministic MLPs
+with 4, 8 and 16 bottleneck units alongside the mean, nearest and direct MLP.
+The MLP uses ReLU layers of widths 64, latent dimension, 64 with linear output;
+training-only standardization and a 500-iteration optimizer budget match the
+direct MLP. PCA is target-side compression, not a learned input encoder. Its
+dimensions are not silently clipped: at least 17 training states are required.
+Each candidate's validation errors, sign-violation fraction, seed and fit
+warnings are saved; only the validation winner is evaluated on test. The last
+8-point metric is a finite-window error, not a high-frequency moment test.
+The MLP decoder is unconstrained: sign checks on sampled Matsubara points do not
+prove causality. Causal decoders and real-frequency property reconstruction
+remain subsequent work, not part of this comparison. Preserve a separate final
+test before making research claims; previously inspected tests are exploratory.
+
 ## Recommended learning workflow
 
 On the Ubuntu machine, activate `physai` and work in

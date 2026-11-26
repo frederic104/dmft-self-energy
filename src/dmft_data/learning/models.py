@@ -21,7 +21,7 @@ def decode(values: np.ndarray, shape: tuple[int, ...]) -> np.ndarray:
 
 
 class Baseline:
-    """Mean, nearest neighbor, target-PCA+Ridge, or direct MLP.
+    """Mean, nearest neighbor, target-PCA+Ridge, or an MLP.
 
     The PCA baseline compresses training self-energies, maps inputs to their
     latent coefficients with Ridge, and decodes with the same training PCA.
@@ -53,9 +53,16 @@ class Baseline:
             self.model = Ridge(alpha=self.specification.get("alpha", 1.0)).fit(
                 xs, latent
             )
-        elif name == "mlp":
+        elif name in {"mlp", "latent_mlp"}:
+            hidden = tuple(self.specification.get("hidden_layers", [64]))
+            if name == "latent_mlp":
+                dimension = int(self.specification["latent_dimension"])
+                if dimension < 1:
+                    raise ValueError("latent_dimension must be positive")
+                hidden = (64, dimension, 64)
+                self.actual_dimension = dimension
             self.model = MLPRegressor(
-                hidden_layer_sizes=tuple(self.specification.get("hidden_layers", [64])),
+                hidden_layer_sizes=hidden,
                 alpha=self.specification.get("alpha", 1e-3),
                 max_iter=self.specification.get("max_iter", 500),
                 random_state=self.seed,
