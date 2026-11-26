@@ -17,7 +17,8 @@ from .learning.splits import blocked_partition
 from .provenance import sha256_file
 
 
-def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon") -> dict:
+def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
+        include_latent: bool = False) -> dict:
     """Fit fixed-budget baselines, select on validation, evaluate test once."""
     dataset, output = Path(dataset), Path(output)
     if output.exists():
@@ -80,9 +81,17 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon") -> d
         x = np.column_stack((x, params[:, 1]))
     candidates = [{"name": "mean"}, {"name": "nearest"},
                   {"name": "pca_ridge", "latent_dimension": 4}, {"name": "mlp"}]
-    trained, validation, fit_warnings = {}, {}, {}
+    if include_latent:
+        candidates = [{"name": "mean"}, {"name": "nearest"}, {"name": "mlp"}]
+        candidates += [{"name": name, "latent_dimension": dim}
+                       for name in ("pca_ridge", "latent_mlp") for dim in (4, 8, 16)]
+    trained, validation, fit_warnings, validation_details = {}, {}, {}, {}
     for spec in candidates:
         name = spec["name"]
+        if include_latent and "latent_dimension" in spec:
+            name = f"{name}_{spec['latent_dimension']}"
+            if spec["name"] == "pca_ridge" and len(splits["train"]) <= spec["latent_dimension"]:
+                raise ValueError("Training set must exceed the requested PCA dimension")
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             model = Baseline(spec, seed).fit(x[splits["train"]], y[splits["train"]])
@@ -90,6 +99,16 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon") -> d
         prediction = decode(model.predict(x[splits["validation"]]), sigma.shape[1:])
         validation[name] = float(np.sqrt(np.mean(np.abs(
             prediction - sigma[splits["validation"]]) ** 2)))
+        delta = prediction - sigma[splits["validation"]]
+        validation_details[name] = {
+            "complex_rmse": validation[name],
+            "real_rmse": float(np.sqrt(np.mean(delta.real ** 2))),
+            "imaginary_rmse": float(np.sqrt(np.mean(delta.imag ** 2))),
+            "first_8_complex_rmse": float(np.sqrt(np.mean(np.abs(delta[:, :8]) ** 2))),
+            "last_8_complex_rmse": float(np.sqrt(np.mean(np.abs(delta[:, -8:]) ** 2))),
+            "positive_imaginary_fraction": float(np.mean(prediction.imag > 1e-10)),
+            "actual_latent_dimension": getattr(model, "actual_dimension", None),
+        }
         trained[name] = model
     selected = min(validation, key=validation.get)
     prediction = decode(trained[selected].predict(x[splits["test"]]), sigma.shape[1:])
@@ -102,9 +121,15 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon") -> d
         "split_rule": rule, "split_type": split, "input_includes_u": split == "u",
         "feature_order": "flattened G0 real, G0 imaginary" + (", U" if split == "u" else ""),
         "fit_warnings": fit_warnings,
+        "validation_diagnostics": validation_details,
         "splits": splits, "validation_complex_rmse": validation, "selected": selected,
         "test_complex_rmse": float(np.sqrt(np.mean(np.abs(difference) ** 2))),
         "test_first_8_complex_rmse": float(np.sqrt(np.mean(np.abs(difference[:, :8]) ** 2))),
+        "test_last_8_complex_rmse": float(np.sqrt(np.mean(np.abs(difference[:, -8:]) ** 2))),
+        "test_real_rmse": float(np.sqrt(np.mean(difference.real ** 2))),
+        "test_imaginary_rmse": float(np.sqrt(np.mean(difference.imag ** 2))),
+        "test_positive_imaginary_fraction": float(np.mean(prediction.imag > 1e-10)),
+        "reference_positive_imaginary_fraction": float(np.mean(target.imag > 1e-10)),
         "note": "Exploratory finite-bath AIM; not lattice DMFT or a final test.",
     }
     output.mkdir(parents=True)
@@ -122,8 +147,11 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--split", choices=("epsilon", "random", "u"), default="epsilon")
+    parser.add_argument("--include-latent", action="store_true",
+                        help="Compare PCA and unconstrained MLP bottlenecks 4, 8, 16")
     args = parser.parse_args()
-    print(json.dumps(run(args.dataset, args.output, args.seed, args.split), indent=2))
+    print(json.dumps(run(args.dataset, args.output, args.seed, args.split,
+                         args.include_latent), indent=2))
 
 
 if __name__ == "__main__":
