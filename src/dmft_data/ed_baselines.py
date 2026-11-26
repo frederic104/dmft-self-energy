@@ -17,6 +17,38 @@ from .learning.splits import blocked_partition
 from .provenance import sha256_file
 
 
+def _network_diagnostics(model: Baseline, train_x: np.ndarray, val_x: np.ndarray) -> dict:
+    """Summarize sklearn's standardized-target loss and observed ReLU bottleneck."""
+    network = model.model
+    result = {
+        "loss_curve": [float(value) for value in network.loss_curve_],
+        "loss_definition": "sklearn MLP training objective on standardized targets, including regularization",
+        "max_iter": network.max_iter,
+        "solver": network.solver,
+        "learning_rate_init": network.learning_rate_init,
+        "batch_size": network.batch_size,
+        "alpha": network.alpha,
+        "tolerance": network.tol,
+        "n_iter_no_change": network.n_iter_no_change,
+        "early_stopping": network.early_stopping,
+    }
+    if model.specification["name"] == "latent_mlp":
+        result["bottleneck"] = {}
+        for role, values in (("train", train_x), ("validation", val_x)):
+            hidden = model.x_scaler.transform(values)
+            # The second hidden layer is the ReLU bottleneck in (64, d, 64).
+            for layer in range(2):
+                hidden = np.maximum(hidden @ network.coefs_[layer] + network.intercepts_[layer], 0)
+            result["bottleneck"][role] = {
+                "units": int(hidden.shape[1]),
+                "unit_never_positive_count": int(np.sum(np.all(hidden == 0, axis=0))),
+                "all_units_zero_sample_fraction": float(np.mean(np.all(hidden == 0, axis=1))),
+                "positive_activation_fraction": float(np.mean(hidden > 0)),
+                "mean_per_unit_standard_deviation": float(np.mean(np.std(hidden, axis=0))),
+            }
+    return result
+
+
 def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
         include_latent: bool = False, model_seed: int | None = None) -> dict:
     """Fit fixed-budget baselines, select on validation, evaluate test once."""
@@ -89,6 +121,7 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
         candidates += [{"name": name, "latent_dimension": dim}
                        for name in ("pca_ridge", "latent_mlp") for dim in (1, 2, 4, 8, 16)]
     trained, validation, fit_warnings, validation_details = {}, {}, {}, {}
+    network_diagnostics = {}
     for spec in candidates:
         name = spec["name"]
         if include_latent and "latent_dimension" in spec:
@@ -97,6 +130,10 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
             warnings.simplefilter("always")
             model = Baseline(spec, model_seed).fit(x[splits["train"]], y[splits["train"]])
         fit_warnings[name] = [str(item.message) for item in caught]
+        if spec["name"] in {"mlp", "latent_mlp"}:
+            network_diagnostics[name] = _network_diagnostics(
+                model, x[splits["train"]], x[splits["validation"]]
+            )
         prediction = decode(model.predict(x[splits["validation"]]), sigma.shape[1:])
         validation[name] = float(np.sqrt(np.mean(np.abs(
             prediction - sigma[splits["validation"]]) ** 2)))
@@ -147,6 +184,7 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
     diagnostics = {
         "interpretation": "Oracle offsets use test targets and are descriptive only; "
                           "sign checks are necessary, not sufficient, for causality.",
+        "network_training_and_bottleneck": network_diagnostics,
         "test_samples": [],
     }
     for position, index in enumerate(splits["test"]):
