@@ -54,7 +54,7 @@ class EpsilonLinear:
 
 
 class Baseline:
-    """Mean, nearest neighbor, target-PCA+Ridge, or an MLP.
+    """Mean, nearest neighbor, full-target Ridge, target-PCA+Ridge, or an MLP.
 
     The PCA baseline compresses training self-energies, maps inputs to their
     latent coefficients with Ridge, and decodes with the same training PCA.
@@ -76,6 +76,8 @@ class Baseline:
             self.model = None
         elif name == "nearest":
             self.model = KNeighborsRegressor(n_neighbors=1).fit(xs, ys)
+        elif name == "ridge":
+            self.model = Ridge(alpha=self.specification.get("alpha", 1.0)).fit(xs, ys)
         elif name == "pca_ridge":
             requested = self.specification.get("latent_dimension", 4)
             self.actual_dimension = min(requested, len(x) - 1, y.shape[1])

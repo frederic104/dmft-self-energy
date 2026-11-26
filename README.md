@@ -45,6 +45,45 @@ The initial development focuses on Track A:
 
 Track B separately provides a controlled finite-bath Anderson impurity reference.
 
+### Working research direction
+
+The immediate question is whether a compact self-energy representation preserves
+prediction quality as the impurity environment changes. The fixed-bath experiments
+are controls, not the final task: epsilon-only interpolation has privileged
+parameter access, and a one-parameter family does not establish broad latent
+structure. Use full-target Ridge to distinguish the effect of target compression
+from the effect of a linear predictor; use direct MLP to assess the supervised
+nonlinear bottleneck under the same G0 inputs. Low-frequency error and physical
+consistency accompany total Matsubara RMSE. Do not assume a smaller bottleneck
+means a smaller model or faster inference.
+
+Our next controlled experiment changes bath coupling strength with matched
+epsilon_d values. The physical unit is an AIM parameter tuple; all states at a
+held-out bath scale stay together. Shared epsilon values are intentional controls,
+not independent draws across baths. This measures transfer across coupling
+strength at familiar epsilon values, not generalization to arbitrary bath shapes,
+temperatures or materials. A useful outcome is compressed prediction comparable
+to full-target Ridge. If both fail in the low-frequency region, investigate the
+representation or coefficient mapping before increasing model complexity.
+
+Subsequent steps depend on that result: vary bath energies or U with identifiable
+inputs; compare a causal decoder to the unconstrained baseline for accuracy and
+physical consistency; then assess impurity spectra against ED. These are proposed
+experiments, not demonstrated contributions. AIM representation learning is already
+studied by [Arsenault et al.](https://doi.org/10.1103/PhysRevB.90.155136), and the
+DFT-derived G0-to-self-energy task is established by
+[Mitra and Banerjee](https://doi.org/10.1038/s41524-026-02277-6).
+Novelty would require evidence for a specific advantage beyond those results.
+
+Keep the two tracks connected through representations and diagnostics, not by
+equating their inputs. DMFT involves an impurity mapping with self-consistency
+([Georges et al.](https://doi.org/10.1103/RevModPhys.68.13)); this finite-bath AIM
+has neither a DFT Hamiltonian nor a lattice self-consistency loop. Bath-size and
+temperature accuracy in ED require their own analysis
+([Liebsch and Ishida](https://arxiv.org/abs/1109.0158)). Track A still needs verified
+input semantics and per-run convergence evidence. These limitations do not block
+the small Track B experiment.
+
 ## Data Sources
 
 The initial dataset is obtained from the public
@@ -181,6 +220,46 @@ The fixed-bath interpolation run found nearest neighbor competitive, while the
 blocked run was harder. This motivates comparing compression and a nonlinear
 bottleneck against the same baselines before adding a causal decoder. It does
 not establish a generalization or novelty claim.
+
+### Controlled bath-strength comparison
+
+`--bath-scales` uses `--fixed-bath` as a base: energies stay fixed and each
+coupling is multiplied by a positive scale s, so Delta_s(z) = s^2 Delta_base(z).
+U must be fixed. `--samples` is the number of epsilon_d values **per scale**;
+the same draws appear at every scale. The example generates 200 states at five
+scales, trains on 120, validates on 40 at s=0.85 and reserves 40 at s=1.15.
+Both held-out scales are interior to the training scale range [0.7,1.3]; this is
+interpolation in that parameter, not parameter-range extrapolation. Input-space
+coverage is a separate question, as illustrated in
+[materials OOD research](https://arxiv.org/abs/2406.06489).
+
+```bash
+python -m dmft_data.ed --output data/processed/ed/bath_transfer_seed31.npz \
+  --samples 40 --seed 31 --fixed-u 2 --beta 20 --fixed-bath -1 1 0.5 0.7 \
+  --bath-scales 0.7 0.85 1.0 1.15 1.3
+for s in 31 32 33; do
+  python -m dmft_data.ed_baselines \
+    --dataset data/processed/ed/bath_transfer_seed31.npz \
+    --output "reports/local/bath_transfer_seed${s}" --split bath \
+    --validation-bath-scale 0.85 --test-bath-scale 1.15 \
+    --seed 31 --model-seed "$s" --include-latent --include-ridge \
+    --validation-only --save-candidates || break
+done
+python -m dmft_data.ed_validation --dataset data/processed/ed/bath_transfer_seed31.npz \
+  --result reports/local/bath_transfer_seed31 --output reports/local/bath_transfer_frequency
+```
+
+`--include-ridge` adds alpha=1 full-target Ridge with the same training scalers
+and regularization as PCA+Ridge. No tuning is performed for these baselines.
+All candidates receive G0 only; scale labels are used for splitting, not as
+features. The fixed-bath epsilon-only baseline is invalid here and is rejected.
+Seeds 31/32/33 vary initialization on the same states, not physical replication.
+Explicit bath holdouts do not depend on the split seed. Existing candidate
+checkpointing and frequency diagnostics are reused. External-test evaluation
+currently supports only fixed-bath datasets; this experiment uses the in-dataset
+bath split and leaves the reserved targets unscored in validation-only mode.
+
+### Fixed-bath latent example
 
 Use a fresh dataset and output directory, for example:
 
