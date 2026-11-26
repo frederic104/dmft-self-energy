@@ -95,6 +95,17 @@ NumPy version. Existing files are protected unless `--overwrite` is supplied.
 The tests check analytic noninteracting and atomic limits, spectral
 normalization, Matsubara causality and reproducibility. Finite bath size,
 temperature and broadening limit the reference's physical scope.
+The ED module also provides thermal impurity occupancy per spin. Its atomic-limit
+checks use independent partition-function expressions; high-frequency tests use
+the spin-symmetric moments `Sigma_inf = U*n_per_spin` and
+`Sigma_1 = U^2*n_per_spin*(1-n_per_spin)`. These controlled AIM checks do not
+establish the corresponding quantities or convergence in Track A data.
+The generator varies U independently, while G0 does not contain U. A future
+learning task must supply U (and other varying quantities not identifiable from
+its input) or explicitly fix them; G0 alone does not define a unique Sigma
+across independently varied U. The existing Track A blocked-partition helper can
+be reused only after defining ED physical-state groups and parameter blocks;
+the ED generator currently creates no train/validation/test split.
 
 ## Recommended learning workflow
 

@@ -6,6 +6,7 @@ energy conventions and solver stages. No universal meV tolerance is assumed.
 
 ## Ubuntu workflow
 
+```bash
 cp -n configs/physics_review.example.yaml data/metadata/physics_review.yaml
 
 # Read saved artifacts only; no retraining or raw HDF5 traversal.
@@ -127,8 +128,8 @@ oracle-centered residual uses the known target and cannot be deployed as an
 improved predictor or interpreted directly as a Hartree/DC correction. No
 gauge alignment is applied to training targets.
 
-High-frequency moments, filling, Z, spectral functions and lattice DOS are
-explicitly deferred. Their assessment needs additional reference information:
+For Track A, high-frequency moments, filling, Z, spectral functions and lattice
+DOS are explicitly deferred. Their assessment needs additional reference information:
 occupancy/interactions and reliable tails; an applicable metallic regime for Z;
 Hamiltonian/projectors/DC and validated continuation for lattice spectral claims.
 The necessary source conventions are described in the
