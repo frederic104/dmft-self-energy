@@ -18,9 +18,10 @@ from .provenance import sha256_file
 
 
 def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
-        include_latent: bool = False) -> dict:
+        include_latent: bool = False, model_seed: int | None = None) -> dict:
     """Fit fixed-budget baselines, select on validation, evaluate test once."""
     dataset, output = Path(dataset), Path(output)
+    model_seed = seed if model_seed is None else model_seed
     if output.exists():
         raise FileExistsError(f"Output already exists: {output}")
     with np.load(dataset, allow_pickle=False) as data:
@@ -79,35 +80,44 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
     x, y = encode(g0), encode(sigma)
     if split == "u":
         x = np.column_stack((x, params[:, 1]))
+    if include_latent and (len(splits["train"]) <= 16 or y.shape[1] < 16):
+        raise ValueError("Training samples and target features must support PCA dimension 16")
     candidates = [{"name": "mean"}, {"name": "nearest"},
                   {"name": "pca_ridge", "latent_dimension": 4}, {"name": "mlp"}]
     if include_latent:
         candidates = [{"name": "mean"}, {"name": "nearest"}, {"name": "mlp"}]
         candidates += [{"name": name, "latent_dimension": dim}
-                       for name in ("pca_ridge", "latent_mlp") for dim in (4, 8, 16)]
+                       for name in ("pca_ridge", "latent_mlp") for dim in (1, 2, 4, 8, 16)]
     trained, validation, fit_warnings, validation_details = {}, {}, {}, {}
     for spec in candidates:
         name = spec["name"]
         if include_latent and "latent_dimension" in spec:
             name = f"{name}_{spec['latent_dimension']}"
-            if spec["name"] == "pca_ridge" and len(splits["train"]) <= spec["latent_dimension"]:
-                raise ValueError("Training set must exceed the requested PCA dimension")
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            model = Baseline(spec, seed).fit(x[splits["train"]], y[splits["train"]])
+            model = Baseline(spec, model_seed).fit(x[splits["train"]], y[splits["train"]])
         fit_warnings[name] = [str(item.message) for item in caught]
         prediction = decode(model.predict(x[splits["validation"]]), sigma.shape[1:])
         validation[name] = float(np.sqrt(np.mean(np.abs(
             prediction - sigma[splits["validation"]]) ** 2)))
         delta = prediction - sigma[splits["validation"]]
+        train_prediction = decode(model.predict(x[splits["train"]]), sigma.shape[1:])
+        train_delta = train_prediction - sigma[splits["train"]]
         validation_details[name] = {
             "complex_rmse": validation[name],
+            "train_complex_rmse": float(np.sqrt(np.mean(np.abs(train_delta) ** 2))),
+            "train_first_8_complex_rmse": float(np.sqrt(np.mean(np.abs(train_delta[:, :8]) ** 2))),
             "real_rmse": float(np.sqrt(np.mean(delta.real ** 2))),
             "imaginary_rmse": float(np.sqrt(np.mean(delta.imag ** 2))),
             "first_8_complex_rmse": float(np.sqrt(np.mean(np.abs(delta[:, :8]) ** 2))),
             "last_8_complex_rmse": float(np.sqrt(np.mean(np.abs(delta[:, -8:]) ** 2))),
             "positive_imaginary_fraction": float(np.mean(prediction.imag > 1e-10)),
             "actual_latent_dimension": getattr(model, "actual_dimension", None),
+            "optimizer_iterations": getattr(model.model, "n_iter_", None),
+            "model_parameter_count": (
+                sum(a.size for a in model.model.coefs_ + model.model.intercepts_)
+                if hasattr(model.model, "coefs_") else None
+            ),
         }
         trained[name] = model
     selected = min(validation, key=validation.get)
@@ -116,7 +126,8 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
     difference = prediction - target
     metrics = {
         "dataset_sha256": sha256_file(dataset),
-        "seed": seed, "python": platform.python_version(), "numpy": np.__version__,
+        "seed": seed, "split_seed": seed, "model_seed": model_seed,
+        "python": platform.python_version(), "numpy": np.__version__,
         "sklearn": sklearn.__version__, "candidates": candidates,
         "split_rule": rule, "split_type": split, "input_includes_u": split == "u",
         "feature_order": "flattened G0 real, G0 imaginary" + (", U" if split == "u" else ""),
@@ -133,7 +144,46 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
         "note": "Exploratory finite-bath AIM; not lattice DMFT or a final test.",
     }
     output.mkdir(parents=True)
+    diagnostics = {
+        "interpretation": "Oracle offsets use test targets and are descriptive only; "
+                          "sign checks are necessary, not sufficient, for causality.",
+        "test_samples": [],
+    }
+    for position, index in enumerate(splits["test"]):
+        err = difference[position]
+        offset = float(err.real.mean())
+        bad = np.flatnonzero(prediction[position].imag > 1e-10)
+        diagnostics["test_samples"].append({
+            "index": index, "epsilon_d": float(params[index, 0]),
+            "complex_rmse": float(np.sqrt(np.mean(np.abs(err) ** 2))),
+            "oracle_real_offset": offset,
+            "oracle_centered_real_rmse": float(np.sqrt(np.mean((err.real - offset) ** 2))),
+            "last_8_signed_real_error": float(err.real[-8:].mean()),
+            "positive_imaginary_points": [
+                {"frequency": float(omega[j]), "prediction": float(prediction[position, j].imag),
+                 "reference": float(target[position, j].imag)} for j in bad
+            ],
+        })
+    if include_latent:
+        pca_model = trained["pca_ridge_16"]
+        pca = pca_model.pca
+        scaler = pca_model.y_scaler
+        pca_diagnostics = {}
+        for dim in (1, 2, 4, 8, 16):
+            part = {"explained_variance_ratio_sum": float(pca.explained_variance_ratio_[:dim].sum())}
+            for role in ("train", "validation"):
+                indices = splits[role]
+                scaled = scaler.transform(y[indices])
+                components = pca.components_[:dim]
+                projected = (scaled - pca.mean_) @ components.T @ components + pca.mean_
+                reconstructed = decode(scaler.inverse_transform(projected), sigma.shape[1:])
+                part[f"{role}_oracle_reconstruction_rmse"] = float(
+                    np.sqrt(np.mean(np.abs(reconstructed - sigma[indices]) ** 2))
+                )
+            pca_diagnostics[str(dim)] = part
+        diagnostics["pca_train_fit_oracle_reconstruction"] = pca_diagnostics
     (output / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
+    (output / "diagnostics.json").write_text(json.dumps(diagnostics, indent=2) + "\n")
     joblib.dump(trained[selected], output / "selected_model.joblib")
     np.savez_compressed(output / "test_predictions.npz", indices=np.asarray(splits["test"]),
                         parameters=params[splits["test"]], omega=omega,
@@ -146,12 +196,13 @@ def main():
     parser.add_argument("--dataset", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--model-seed", type=int, help="Model initialization seed (default: split seed)")
     parser.add_argument("--split", choices=("epsilon", "random", "u"), default="epsilon")
     parser.add_argument("--include-latent", action="store_true",
-                        help="Compare PCA and unconstrained MLP bottlenecks 4, 8, 16")
+                        help="Compare PCA and unconstrained MLP bottlenecks 1, 2, 4, 8, 16")
     args = parser.parse_args()
     print(json.dumps(run(args.dataset, args.output, args.seed, args.split,
-                         args.include_latent), indent=2))
+                         args.include_latent, args.model_seed), indent=2))
 
 
 if __name__ == "__main__":

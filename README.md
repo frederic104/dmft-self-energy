@@ -167,11 +167,12 @@ python -m dmft_data.ed_baselines --dataset data/processed/ed/latent_example.npz 
 ```
 
 `--include-latent` compares PCA+Ridge and unconstrained deterministic MLPs
-with 4, 8 and 16 bottleneck units alongside the mean, nearest and direct MLP.
+with 1, 2, 4, 8 and 16 bottleneck units alongside the mean, nearest and direct MLP.
 The MLP uses ReLU layers of widths 64, latent dimension, 64 with linear output;
 training-only standardization and a 500-iteration optimizer budget match the
 direct MLP. PCA is target-side compression, not a learned input encoder. Its
-dimensions are not silently clipped: at least 17 training states are required.
+dimensions are not silently clipped: at least 17 training states and 16 real
+target features are required for dimension 16.
 Each candidate's validation errors, sign-violation fraction, seed and fit
 warnings are saved; only the validation winner is evaluated on test. The last
 8-point metric is a finite-window error, not a high-frequency moment test.
@@ -179,6 +180,23 @@ The MLP decoder is unconstrained: sign checks on sampled Matsubara points do not
 prove causality. Causal decoders and real-frequency property reconstruction
 remain subsequent work, not part of this comparison. Preserve a separate final
 test before making research claims; previously inspected tests are exploratory.
+
+The fixed-bath example is a one-parameter family, but a one-dimensional nonlinear
+curve need not be well represented by one linear PCA component. The exploratory
+blocked run showed a real offset and low-frequency sign violations; therefore
+`diagnostics.json` records per-test-state oracle real offsets, shape residuals and
+individual positive-imaginary points. Offsets use true targets and are not a
+deployable correction. Training-only PCA explained variance and reconstruction
+errors on train and validation are diagnostic, not model selection scores.
+
+Use `--model-seed` to vary optimizer initialization while holding `--seed` and
+the random partition fixed; both are recorded in `metrics.json`. With an epsilon
+blocked split the thresholds are fixed, and changing split seed does not change
+its partition. Repeat runs into fresh directories, retaining seed-level results;
+the same maximum MLP iteration count does not imply equal computational budgets
+or equal tuning. Validation and test data must never be used for fitting scalers
+or PCA. These diagnostics do not prove causality or establish the self-energy
+high-frequency moment, and they do not assess lattice DOS.
 
 ## Recommended learning workflow
 
