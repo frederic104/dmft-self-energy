@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import platform
+import warnings
 from pathlib import Path
 
 import joblib
@@ -16,7 +17,7 @@ from .learning.splits import blocked_partition
 from .provenance import sha256_file
 
 
-def run(dataset: Path, output: Path, seed: int = 0) -> dict:
+def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon") -> dict:
     """Fit fixed-budget baselines, select on validation, evaluate test once."""
     dataset, output = Path(dataset), Path(output)
     if output.exists():
@@ -34,8 +35,12 @@ def run(dataset: Path, output: Path, seed: int = 0) -> dict:
             or not all(np.isfinite(a).all() for a in (params, g0, sigma, omega))
             or np.any(omega <= 0)):
         raise ValueError("Invalid arrays or Matsubara mesh")
-    if not all(np.all(params[:, i] == params[0, i]) for i in (1, 6, 7)):
-        raise ValueError("U, mu and beta must be fixed")
+    if split not in {"epsilon", "random", "u"}:
+        raise ValueError("split must be epsilon, random, or u")
+    if not all(np.all(params[:, i] == params[0, i]) for i in (6, 7)):
+        raise ValueError("mu and beta must be fixed")
+    if split != "u" and not np.all(params[:, 1] == params[0, 1]):
+        raise ValueError("U must be fixed for epsilon and random splits")
     expected_omega = (2 * np.arange(len(omega)) + 1) * np.pi / params[0, 7]
     if params[0, 7] <= 0 or not np.allclose(omega, expected_omega):
         raise ValueError("Mesh must match the fixed beta")
@@ -43,20 +48,45 @@ def run(dataset: Path, output: Path, seed: int = 0) -> dict:
     for i, row in enumerate(params):
         bath = sorted(((row[2], abs(row[4])), (row[3], abs(row[5]))))
         group = repr((row[0], row[1], bath, row[6], row[7]))
-        block = "low" if row[0] < -0.6 else "high" if row[0] >= -0.2 else "middle"
+        if split == "u":
+            block = "validation" if 1.5 <= row[1] < 2.0 else (
+                "test" if 2.0 <= row[1] < 2.5 else "train"
+            )
+        else:
+            block = "low" if row[0] < -0.6 else "high" if row[0] >= -0.2 else "middle"
         records.append({"group_id": group, "parameter_block": block,
                         "relative_source_path": str(i)})
     if len({r["group_id"] for r in records}) != len(records):
         raise ValueError("Duplicate physical parameters; deduplicate before fitting")
-    splits = blocked_partition(records, {"dimension": "parameter_block",
-                                         "validation": ["low"], "test": ["high"]})
+    if split == "random":
+        if len(params) < 10:
+            raise ValueError("Random split requires at least 10 distinct states")
+        order = np.random.default_rng(seed).permutation(len(params))
+        n_test = max(1, int(len(order) * 0.2))
+        n_val = max(1, int(len(order) * 0.2))
+        splits = {"test": order[:n_test].tolist(),
+                  "validation": order[n_test:n_test + n_val].tolist(),
+                  "train": order[n_test + n_val:].tolist()}
+        rule = "random physical-state split: 60% train, 20% validation, 20% test"
+    else:
+        validation_block, test_block = ("validation", "test") if split == "u" else ("low", "high")
+        splits = blocked_partition(records, {"dimension": "parameter_block",
+                                             "validation": [validation_block],
+                                             "test": [test_block]})
+        rule = ("U: validation [1.5,2); test [2,2.5); train remainder" if split == "u"
+                else "epsilon_d: validation < -0.6; train [-0.6,-0.2); test >= -0.2")
     x, y = encode(g0), encode(sigma)
+    if split == "u":
+        x = np.column_stack((x, params[:, 1]))
     candidates = [{"name": "mean"}, {"name": "nearest"},
                   {"name": "pca_ridge", "latent_dimension": 4}, {"name": "mlp"}]
-    trained, validation = {}, {}
+    trained, validation, fit_warnings = {}, {}, {}
     for spec in candidates:
         name = spec["name"]
-        model = Baseline(spec, seed).fit(x[splits["train"]], y[splits["train"]])
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            model = Baseline(spec, seed).fit(x[splits["train"]], y[splits["train"]])
+        fit_warnings[name] = [str(item.message) for item in caught]
         prediction = decode(model.predict(x[splits["validation"]]), sigma.shape[1:])
         validation[name] = float(np.sqrt(np.mean(np.abs(
             prediction - sigma[splits["validation"]]) ** 2)))
@@ -69,15 +99,20 @@ def run(dataset: Path, output: Path, seed: int = 0) -> dict:
         "dataset_sha256": sha256_file(dataset),
         "seed": seed, "python": platform.python_version(), "numpy": np.__version__,
         "sklearn": sklearn.__version__, "candidates": candidates,
-        "split_rule": "epsilon_d: validation < -0.6; train [-0.6,-0.2); test >= -0.2",
+        "split_rule": rule, "split_type": split, "input_includes_u": split == "u",
+        "feature_order": "flattened G0 real, G0 imaginary" + (", U" if split == "u" else ""),
+        "fit_warnings": fit_warnings,
         "splits": splits, "validation_complex_rmse": validation, "selected": selected,
         "test_complex_rmse": float(np.sqrt(np.mean(np.abs(difference) ** 2))),
         "test_first_8_complex_rmse": float(np.sqrt(np.mean(np.abs(difference[:, :8]) ** 2))),
-        "note": "Finite-bath AIM only; held-out epsilon_d blocks; not lattice DMFT.",
+        "note": "Exploratory finite-bath AIM; not lattice DMFT or a final test.",
     }
     output.mkdir(parents=True)
     (output / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
     joblib.dump(trained[selected], output / "selected_model.joblib")
+    np.savez_compressed(output / "test_predictions.npz", indices=np.asarray(splits["test"]),
+                        parameters=params[splits["test"]], omega=omega,
+                        reference=target, prediction=prediction)
     return metrics
 
 
@@ -86,8 +121,9 @@ def main():
     parser.add_argument("--dataset", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--split", choices=("epsilon", "random", "u"), default="epsilon")
     args = parser.parse_args()
-    print(json.dumps(run(args.dataset, args.output, args.seed), indent=2))
+    print(json.dumps(run(args.dataset, args.output, args.seed, args.split), indent=2))
 
 
 if __name__ == "__main__":

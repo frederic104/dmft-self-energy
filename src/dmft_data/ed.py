@@ -182,10 +182,15 @@ def generate_small_dataset(
     frequency_count: int = 64,
     overwrite: bool = False,
     fixed_u: float | None = None,
+    fixed_bath: tuple[float, float, float, float] | None = None,
 ) -> dict[str, object]:
     """Generate a deterministic small AIM reference set in a compressed NPZ file."""
     if samples < 1:
         raise ValueError("samples must be at least one")
+    if fixed_u is not None and not np.isfinite(fixed_u):
+        raise ValueError("fixed_u must be finite")
+    if fixed_bath is not None and (len(fixed_bath) != 4 or not np.isfinite(fixed_bath).all()):
+        raise ValueError("fixed_bath must contain four finite numbers")
     output = Path(output)
     if output.suffix != ".npz":
         raise ValueError("output must have a .npz extension")
@@ -196,11 +201,16 @@ def generate_small_dataset(
     omega = matsubara_frequencies(beta, frequency_count)
     parameters, greens, g0s, sigmas = [], [], [], []
     for _ in range(samples):
+        epsilon_d = float(rng.uniform(-1.0, 0.2))
+        interaction_u = float(rng.uniform(0.5, 4.0) if fixed_u is None else fixed_u)
+        bath = fixed_bath if fixed_bath is not None else (
+            *rng.uniform(-2.0, 2.0, 2), *rng.uniform(0.15, 1.0, 2)
+        )
         params = AIMParameters(
-            epsilon_d=float(rng.uniform(-1.0, 0.2)),
-            interaction_u=float(rng.uniform(0.5, 4.0) if fixed_u is None else fixed_u),
-            bath_energies=tuple(float(x) for x in rng.uniform(-2.0, 2.0, 2)),
-            hybridizations=tuple(float(x) for x in rng.uniform(0.15, 1.0, 2)),
+            epsilon_d=epsilon_d,
+            interaction_u=interaction_u,
+            bath_energies=tuple(float(x) for x in bath[:2]),
+            hybridizations=tuple(float(x) for x in bath[2:]),
             beta=beta,
         )
         result = solve(params)
@@ -225,6 +235,9 @@ def generate_small_dataset(
         "seed": seed,
         "beta": beta,
         "fixed_u": fixed_u,
+        "fixed_bath": fixed_bath,
+        "sampling_ranges": {"epsilon_d": [-1.0, 0.2], "U": [0.5, 4.0],
+                            "bath_energy": [-2.0, 2.0], "hybridization": [0.15, 1.0]},
         "frequency_count": frequency_count,
         "numpy_version": np.__version__,
         "convention": "K=H-mu*N; Sigma=G0^-1-G_imp^-1; spin_averaged",
@@ -262,6 +275,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--beta", type=float, default=20.0)
     parser.add_argument("--frequency-count", type=int, default=64)
     parser.add_argument("--fixed-u", type=float, help="Fix U instead of sampling it")
+    parser.add_argument("--fixed-bath", type=float, nargs=4, metavar=("E0", "E1", "V0", "V1"))
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args(argv)
     metadata = generate_small_dataset(
@@ -272,6 +286,7 @@ def main(argv: list[str] | None = None) -> None:
         frequency_count=args.frequency_count,
         overwrite=args.overwrite,
         fixed_u=args.fixed_u,
+        fixed_bath=tuple(args.fixed_bath) if args.fixed_bath is not None else None,
     )
     print(json.dumps(metadata, indent=2))
 

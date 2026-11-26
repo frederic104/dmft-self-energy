@@ -120,6 +120,38 @@ selected model, split indices and metrics. This is an illustrative parameter
 holdout, not evidence of generalization across arbitrary baths or materials.
 Use fresh output paths for new experiments; do not retune on the reported test.
 
+For exploratory comparisons, run the following from the repository root with
+`physai` activated. These small example counts and ranges are starting points,
+not a final assessment; keep a separate final test dataset for later research.
+The same dataset is used for the random and epsilon splits, but their train and
+test states differ, so their scores compare protocols rather than matched cases.
+
+```bash
+export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
+# A: independent-state interpolation versus epsilon-blocked extrapolation
+python -m dmft_data.ed --output data/processed/ed/compare_a.npz --samples 100 --seed 13 --fixed-u 2 --beta 20
+python -m dmft_data.ed_baselines --dataset data/processed/ed/compare_a.npz --output reports/local/aim_a_random --split random --seed 13
+python -m dmft_data.ed_baselines --dataset data/processed/ed/compare_a.npz --output reports/local/aim_a_blocked --split epsilon --seed 13
+# B: repeat the split comparison on a fixed bath; change the bath for another case
+python -m dmft_data.ed --output data/processed/ed/compare_b.npz --samples 100 --seed 13 --fixed-u 2 --beta 20 --fixed-bath -1 1 0.5 0.7
+python -m dmft_data.ed_baselines --dataset data/processed/ed/compare_b.npz --output reports/local/aim_b_random --split random --seed 13
+python -m dmft_data.ed_baselines --dataset data/processed/ed/compare_b.npz --output reports/local/aim_b_blocked --split epsilon --seed 13
+# C: U varies; it is explicitly appended to G0 as an input feature.
+python -m dmft_data.ed --output data/processed/ed/compare_c.npz --samples 100 --seed 13 --beta 20
+python -m dmft_data.ed_baselines --dataset data/processed/ed/compare_c.npz --output reports/local/aim_c_u --split u --seed 13
+python -m dmft_data.ed_plot --result reports/local/aim_c_u
+```
+
+`--split u` reserves U in [1.5,2) for validation and [2,2.5) for test;
+remaining sampled U values are training. These are interior holdouts, not
+outside-range extrapolation. The PNG shows individual test-state errors rather
+than smoothing or averaging over baths, and the worst low-frequency test curve.
+Each run saves predictions and reference values for detailed inspection. ED
+parameters, fixed bath and sampling ranges are retained in the local dataset;
+metrics include split indices, seed, model settings and fit warnings. All test
+figures and metrics are exploratory once examined; do not use them as untouched
+final evaluation. The chosen fixed bath and intervals are illustrative.
+
 ## Recommended learning workflow
 
 On the Ubuntu machine, activate `physai` and work in
