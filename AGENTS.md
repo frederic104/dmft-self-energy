@@ -25,6 +25,34 @@ Priority:
 
 Do not implement all stages in one change.
 
+For Track B, progress incrementally from the verified finite-bath reference to
+baselines and controlled representation comparisons. The HDF5 ordering above is
+specific to Track A and does not block a separate AIM experiment.
+
+## Decision-focused research workflow
+
+- Before a study, state the question, the baseline, the independent physical
+  unit, and the next decision the result can change. Prefer one minimal experiment
+  to repeated full-data audits or a new report for every run.
+- Always preserve provenance and independent splits, fit preprocessing on
+  training data only, and check numerical validity. Match validation to the
+  question: random grouped splits describe interpolation; blocked splits probe
+  their specified holdout. Neither implies broader generalization by itself.
+- During development use validation-only runs and a small prespecified set of
+  initialization seeds. Record the split and every seed; seeds measure optimizer
+  variation, not independent physical samples. Compare candidates on consistent
+  splits and declared resource/tuning budgets, and retain failures and warnings.
+- Investigate extra diagnostics when they can resolve a concrete uncertainty,
+  such as a collapsed bottleneck. Do not repeatedly expand causality, spectral,
+  convergence or publication checks as an automatic gate for exploratory code.
+  Keep results and assumptions labeled; reserve stronger evidence for claims.
+- Freeze the comparison protocol before any final test. Previously inspected test
+  data used in development are exploratory. Evaluate only a fresh independent
+  test after selection; do not invent a validated final result.
+- Track A input semantics and per-run target convergence remain unresolved until
+  supported by evidence. Track B finite-bath impurity results do not establish
+  lattice DMFT convergence, real-material DOS, or spectral accuracy.
+
 ## Scientific Review
 
 When a data field is ambiguous:

@@ -6,8 +6,8 @@
 This project investigates physics-constrained latent
 representation learning for electronic self-energy prediction.
 
-The current priority is data validation and extraction,
-not model development.
+For Track A, data validity and physical interpretation take priority. Track B
+may progress through controlled ED and modest model comparisons independently.
 
 The surrogate is intended to complement DFT+DMFT,
 not replace it.
