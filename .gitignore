@@ -15,6 +15,7 @@ laptop-results/
 reports/local/
 data/processed/research_datasets/
 data/processed/learning/
+data/processed/ed/
 *.egg-info/
 
 # Python environments
