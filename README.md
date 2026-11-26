@@ -262,6 +262,17 @@ to the external evaluation command. All saved candidates are scored on the same
 states without refitting; the bundle hash is checked. Older runs save only the
 winner. Freeze models, training split, test sampling and primary metrics before
 examining a genuinely independent test; the program cannot prove a test is untouched.
+For a frequency-resolved exploratory comparison of a saved validation bundle,
+use a result made with `--save-candidates`:
+
+```bash
+python -m dmft_data.ed_validation --dataset data/processed/ed/latent_example.npz \
+  --result reports/local/aim_linear_validation --output reports/local/aim_frequency
+```
+
+This saves a CSV and figure for validation states only, with complex, real and
+imaginary errors and signed mean errors.
+
 The epsilon baseline has different input information. Treat all final scores as
 final evaluation, not a further tuning set. Only load trusted joblib artifacts.
 No interpolation or extrapolation result establishes lattice DOS accuracy or

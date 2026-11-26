@@ -10,7 +10,9 @@ from dmft_data.ed import generate_small_dataset
 from dmft_data.ed_baselines import EpsilonLinear, _network_diagnostics, run
 from dmft_data.ed_external_test import evaluate
 from dmft_data.ed_plot import plot
+from dmft_data.ed_validation import analyze
 from dmft_data.learning.models import Baseline, encode
+from dmft_data.provenance import sha256_file
 
 
 def test_external_evaluation_checks_dataset_and_separates_coverage(tmp_path):
@@ -21,6 +23,28 @@ def test_external_evaluation_checks_dataset_and_separates_coverage(tmp_path):
                            fixed_bath=(-1, 1, .5, .7))
     run(development, tmp_path / "validation", seed=31, split="epsilon",
         validation_only=True, include_epsilon_linear=True, save_candidates=True)
+    validation = analyze(development, tmp_path / "validation", tmp_path / "frequency")
+    assert validation["phase"] == "validation_only"
+    assert validation["validation_count"] > 0
+    assert set(validation["complex_rmse"]) == {"mean", "nearest", "mlp", "pca_ridge", "epsilon_linear"}
+    assert (tmp_path / "frequency" / "frequency_errors.csv").exists()
+    assert (tmp_path / "frequency" / "frequency_errors.png").exists()
+    with pytest.raises(FileExistsError):
+        analyze(development, tmp_path / "validation", tmp_path / "frequency")
+    import json
+
+    metrics_path = tmp_path / "validation" / "metrics.json"
+    metrics = json.loads(metrics_path.read_text())
+    with np.load(development) as arrays:
+        modified = {key: arrays[key].copy() for key in arrays.files}
+    modified["sigma"][metrics["splits"]["test"]] += 10j
+    np.savez(tmp_path / "modified.npz", **modified)
+    metrics["dataset_sha256"] = sha256_file(tmp_path / "modified.npz")
+    metrics_path.write_text(json.dumps(metrics))
+    repeat = analyze(tmp_path / "modified.npz", tmp_path / "validation", tmp_path / "frequency_repeat")
+    assert repeat["complex_rmse"] == validation["complex_rmse"]
+    metrics["dataset_sha256"] = sha256_file(development)
+    metrics_path.write_text(json.dumps(metrics))
     report = evaluate(development, tmp_path / "validation", external, tmp_path / "evaluation")
     assert sum(g["count"] for g in report["groups"].values()) == 20
     assert all(g["count"] for g in report["groups"].values())
@@ -36,6 +60,8 @@ def test_external_evaluation_checks_dataset_and_separates_coverage(tmp_path):
     with pytest.raises(ValueError, match="does not match"):
         evaluate(development, tmp_path / "validation", external, tmp_path / "tampered",
                  all_candidates=True)
+    with pytest.raises(ValueError, match="does not match"):
+        analyze(development, tmp_path / "validation", tmp_path / "tampered_frequency")
     with pytest.raises(FileExistsError):
         evaluate(development, tmp_path / "validation", external, tmp_path / "evaluation")
     with pytest.raises(ValueError, match="distinct"):
