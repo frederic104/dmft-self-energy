@@ -20,8 +20,7 @@ The initial development focuses on Track A:
 - Data provenance and metadata management
 - Construction of verified training datasets
 
-Track B (finite-bath Anderson Impurity Model ED)
-will be developed separately.
+Track B separately provides a controlled finite-bath Anderson impurity reference.
 
 ## Data Sources
 
@@ -46,7 +45,8 @@ included in this repository.
 - HDF5 extraction and storage diagnostics support the observed TRIQS schema.
 - Paired preparation and CPU baseline training are available through one CLI.
 - Physical input semantics and per-run convergence require external evidence.
-- Causal learned decoders, controlled ED, and spectral validation remain future work.
+- Causal learned decoders and lattice spectral validation remain future work.
+- Track B includes a small finite-temperature, two-bath AIM ED reference.
 
 ## Installation
 
@@ -61,6 +61,40 @@ pip install -e ".[dev]"
 ```
 
 For baseline experiments, install `pip install -e ".[dev,ml]"`.
+
+## Track B: finite-bath AIM reference
+
+`dmft_data.ed` diagonalizes a spinful impurity and two spin-degenerate bath
+sites in the 64-state Fock space. With orbital order
+`(d_up, d_down, b0_up, b0_down, b1_up, b1_down)`, it diagonalizes `K=H-mu*N`:
+
+```text
+H = epsilon_d sum_sigma n_dsigma + U n_dup n_ddown
+  + sum_l,sigma [epsilon_l n_lsigma + V_l (d_sigma^dagger c_lsigma + h.c.)]
+G0(iw)^-1 = iw + mu - epsilon_d - sum_l V_l^2/(iw + mu - epsilon_l)
+Sigma(iw) = G0(iw)^-1 - G_imp(iw)^-1
+```
+
+Use one common energy unit. `G_imp` is the thermal Lehmann Green's function,
+spin averaged by default; no double-counting correction is applied. The
+broadened `-Im G_imp(w+i eta)/pi` is an impurity spectral function. This
+finite-bath reference has no DMFT self-consistency and is not a lattice DOS.
+
+On Ubuntu, in `/home/frederic104/projects/dmft-self-energy`:
+
+```bash
+conda activate physai
+pip install -e ".[dev]"
+pytest -q tests/test_ed.py
+python -m dmft_data.ed --output data/processed/ed/aim_small.npz --samples 8 --seed 0
+```
+
+The local, Git-ignored NPZ contains the positive Matsubara mesh, parameters,
+complex `green`, `g0`, `sigma`, and JSON metadata including the random seed and
+NumPy version. Existing files are protected unless `--overwrite` is supplied.
+The tests check analytic noninteracting and atomic limits, spectral
+normalization, Matsubara causality and reproducibility. Finite bath size,
+temperature and broadening limit the reference's physical scope.
 
 ## Recommended learning workflow
 

@@ -3,6 +3,7 @@
 __all__ = [
     "convergence",
     "dataset",
+    "ed",
     "extraction",
     "inventory",
     "metadata",
