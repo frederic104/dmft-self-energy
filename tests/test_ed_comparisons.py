@@ -18,8 +18,10 @@ def test_controlled_bath_and_reproducible_random_split(tmp_path):
         np.testing.assert_array_equal(arrays["parameters"][:, 2:6],
                                       np.tile([-1, 1, 0.5, 0.7], (20, 1)))
     result = run(data, tmp_path / "random", seed=5, split="random")
-    repeat = run(data, tmp_path / "repeat", seed=5, split="random")
+    repeat = run(data, tmp_path / "repeat", seed=5, split="random", model_seed=6)
     assert result["splits"] == repeat["splits"]
+    assert result["model_seed"] == 5
+    assert repeat["model_seed"] == 6
     assert sum(map(len, result["splits"].values())) == 20
     assert plot(tmp_path / "random").exists()
     with pytest.raises(FileExistsError):
@@ -49,20 +51,39 @@ def test_latent_candidates_use_same_training_split_and_report_diagnostics(tmp_pa
                            fixed_bath=(-1, 1, 0.5, 0.7))
     result = run(data, tmp_path / "out", seed=31, split="random", include_latent=True)
     expected = {"mean", "nearest", "mlp"} | {
-        f"{name}_{dim}" for name in ("pca_ridge", "latent_mlp") for dim in (4, 8, 16)
+        f"{name}_{dim}" for name in ("pca_ridge", "latent_mlp") for dim in (1, 2, 4, 8, 16)
     }
     assert set(result["validation_complex_rmse"]) == expected
     assert result["selected"] in expected
-    for dim in (4, 8, 16):
+    for dim in (1, 2, 4, 8, 16):
         assert result["validation_diagnostics"][f"latent_mlp_{dim}"][
             "actual_latent_dimension"
         ] == dim
     with np.load(data) as arrays:
         x = encode(arrays["g0"])
+        reduced = {key: arrays[key].copy() for key in arrays.files}
+    reduced["omega"] = reduced["omega"][:4]
+    for key in ("g0", "green", "sigma"):
+        reduced[key] = reduced[key][:, :4]
+    np.savez(tmp_path / "short.npz", **reduced)
+    with pytest.raises(ValueError, match="must support PCA dimension 16"):
+        run(tmp_path / "short.npz", tmp_path / "short_out", seed=31,
+            split="random", include_latent=True)
     selected = joblib.load(tmp_path / "out" / "selected_model.joblib")
     np.testing.assert_allclose(selected.x_scaler.mean_, x[result["splits"]["train"]].mean(axis=0))
     assert np.isfinite(result["test_real_rmse"])
     assert 0 <= result["test_positive_imaginary_fraction"] <= 1
+    import json
+
+    diagnostics = json.loads((tmp_path / "out" / "diagnostics.json").read_text())
+    assert set(diagnostics["pca_train_fit_oracle_reconstruction"]) == {"1", "2", "4", "8", "16"}
+    assert [row["index"] for row in diagnostics["test_samples"]] == result["splits"]["test"]
+    with np.load(tmp_path / "out" / "test_predictions.npz") as saved:
+        err = (saved["prediction"] - saved["reference"]).real
+        np.testing.assert_allclose(
+            [row["oracle_real_offset"] for row in diagnostics["test_samples"]],
+            err.mean(axis=1),
+        )
 
 
 def test_latent_model_has_requested_bottleneck():
