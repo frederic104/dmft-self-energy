@@ -100,3 +100,22 @@ def test_generator_is_reproducible_and_keeps_metadata(tmp_path):
         generate_small_dataset(first)
     with pytest.raises(ValueError, match=".npz"):
         generate_small_dataset(tmp_path / "missing_extension")
+
+
+def test_fixed_u_generator_and_blocked_baseline(tmp_path):
+    from dmft_data.ed_baselines import run
+
+    dataset = tmp_path / "fixed.npz"
+    generate_small_dataset(dataset, samples=18, seed=0, frequency_count=8, fixed_u=2.0)
+    with np.load(dataset) as data:
+        assert np.all(data["parameters"][:, 1] == 2.0)
+        levels = data["parameters"][:, 0].copy()
+    metrics = run(dataset, tmp_path / "results")
+    splits = metrics["splits"]
+    assert np.all(levels[splits["validation"]] < -0.6)
+    assert np.all(levels[splits["train"]] >= -0.6)
+    assert np.all(levels[splits["train"]] < -0.2)
+    assert np.all(levels[splits["test"]] >= -0.2)
+    assert (tmp_path / "results" / "selected_model.joblib").exists()
+    with pytest.raises(FileExistsError):
+        run(dataset, tmp_path / "results")

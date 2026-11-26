@@ -181,6 +181,7 @@ def generate_small_dataset(
     beta: float = 20.0,
     frequency_count: int = 64,
     overwrite: bool = False,
+    fixed_u: float | None = None,
 ) -> dict[str, object]:
     """Generate a deterministic small AIM reference set in a compressed NPZ file."""
     if samples < 1:
@@ -197,7 +198,7 @@ def generate_small_dataset(
     for _ in range(samples):
         params = AIMParameters(
             epsilon_d=float(rng.uniform(-1.0, 0.2)),
-            interaction_u=float(rng.uniform(0.5, 4.0)),
+            interaction_u=float(rng.uniform(0.5, 4.0) if fixed_u is None else fixed_u),
             bath_energies=tuple(float(x) for x in rng.uniform(-2.0, 2.0, 2)),
             hybridizations=tuple(float(x) for x in rng.uniform(0.15, 1.0, 2)),
             beta=beta,
@@ -223,6 +224,7 @@ def generate_small_dataset(
         "samples": samples,
         "seed": seed,
         "beta": beta,
+        "fixed_u": fixed_u,
         "frequency_count": frequency_count,
         "numpy_version": np.__version__,
         "convention": "K=H-mu*N; Sigma=G0^-1-G_imp^-1; spin_averaged",
@@ -259,6 +261,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--beta", type=float, default=20.0)
     parser.add_argument("--frequency-count", type=int, default=64)
+    parser.add_argument("--fixed-u", type=float, help="Fix U instead of sampling it")
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args(argv)
     metadata = generate_small_dataset(
@@ -268,6 +271,7 @@ def main(argv: list[str] | None = None) -> None:
         beta=args.beta,
         frequency_count=args.frequency_count,
         overwrite=args.overwrite,
+        fixed_u=args.fixed_u,
     )
     print(json.dumps(metadata, indent=2))
 

@@ -107,6 +107,19 @@ across independently varied U. The existing Track A blocked-partition helper can
 be reused only after defining ED physical-state groups and parameter blocks;
 the ED generator currently creates no train/validation/test split.
 
+For an exploratory fixed-U CPU baseline, use a fresh local output path:
+
+```bash
+python -m dmft_data.ed --output data/processed/ed/fixed_u.npz --samples 60 --seed 0 --fixed-u 2.0 --beta 20
+python -m dmft_data.ed_baselines --dataset data/processed/ed/fixed_u.npz --output reports/local/ed_fixed_u --seed 0
+```
+
+The second command holds out low and high impurity-level intervals for validation
+and test, selects among fixed baseline settings on validation only, and saves the
+selected model, split indices and metrics. This is an illustrative parameter
+holdout, not evidence of generalization across arbitrary baths or materials.
+Use fresh output paths for new experiments; do not retune on the reported test.
+
 ## Recommended learning workflow
 
 On the Ubuntu machine, activate `physai` and work in
