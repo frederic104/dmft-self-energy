@@ -9,6 +9,7 @@ from dmft_data.ed import (
     AIMParameters,
     generate_small_dataset,
     green_iw,
+    impurity_occupancy,
     matsubara_frequencies,
     noninteracting_green_iw,
     self_energy_iw,
@@ -38,6 +39,40 @@ def test_atomic_half_filled_self_energy_is_exact():
     sigma = self_energy_iw(solve(params), omega)
     expected = interaction / 2 + interaction**2 / (4j * omega)
     np.testing.assert_allclose(sigma, expected, atol=1e-11)
+
+
+@pytest.mark.parametrize("epsilon, interaction, mu, beta", [
+    (-0.4, 2.1, 0.3, 3.0),
+    (0.7, 1.5, -0.2, 1.7),
+    (-1.2, 3.0, -0.5, 4.0),
+])
+def test_asymmetric_atomic_green_and_occupancy(epsilon, interaction, mu, beta):
+    params = AIMParameters(epsilon, interaction, (-1.0, 1.0), (0.0, 0.0), mu, beta)
+    result = solve(params)
+    single = np.exp(-beta * (epsilon - mu))
+    double = np.exp(-beta * (2 * (epsilon - mu) + interaction))
+    occupation = (single + double) / (1 + 2 * single + double)
+    omega = matsubara_frequencies(beta, 20)
+    z = 1j * omega + mu - epsilon
+    expected = (1 - occupation) / z + occupation / (z - interaction)
+    for spin in (0, 1):
+        np.testing.assert_allclose(impurity_occupancy(result, spin), occupation, atol=1e-12)
+        np.testing.assert_allclose(green_iw(result, omega, spin), expected, atol=1e-12)
+    np.testing.assert_allclose(impurity_occupancy(result), occupation, atol=1e-12)
+
+
+def test_interacting_high_frequency_self_energy_moments():
+    params = AIMParameters(-0.7, 2.6, (-1.2, 0.9), (0.5, 0.8), 0.25, 8.0)
+    result = solve(params)
+    occupation = impurity_occupancy(result)
+    omega = np.array([2000.0, 4000.0])
+    sigma = self_energy_iw(result, omega)
+    hartree = params.interaction_u * occupation
+    first_moment = params.interaction_u**2 * occupation * (1 - occupation)
+    np.testing.assert_allclose(sigma.real, hartree, atol=2e-6, rtol=0)
+    moment_errors = np.abs(-omega * sigma.imag - first_moment)
+    assert moment_errors[1] < moment_errors[0]
+    np.testing.assert_allclose(-omega * sigma.imag, first_moment, atol=5e-6, rtol=0)
 
 
 def test_spectral_sum_rule_and_matsubara_causality():

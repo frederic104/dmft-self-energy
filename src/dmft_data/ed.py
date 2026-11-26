@@ -122,6 +122,18 @@ def green_iw(result: EDResult, omega: np.ndarray, spin: int | None = None) -> np
     return green_z(result, 1j * omega, spin)
 
 
+def impurity_occupancy(result: EDResult, spin: int | None = None) -> float:
+    """Return thermal impurity occupation per spin, averaged when spin is None."""
+    spins = range(2) if spin is None else (spin,)
+    if any(value not in (0, 1) for value in spins):
+        raise ValueError("spin must be 0, 1, or None")
+    occupations = [
+        np.dot(result.weights, np.sum(np.abs(result.impurity_annihilation[s]) ** 2, axis=0))
+        for s in spins
+    ]
+    return float(np.mean(occupations))
+
+
 def green_z(result: EDResult, z: np.ndarray, spin: int | None = None) -> np.ndarray:
     """Return retarded/complex-frequency impurity Green's function by Lehmann ED."""
     z = np.asarray(z, dtype=complex)
