@@ -80,10 +80,10 @@ spin averaged by default; no double-counting correction is applied. The
 broadened `-Im G_imp(w+i eta)/pi` is an impurity spectral function. This
 finite-bath reference has no DMFT self-consistency and is not a lattice DOS.
 
-On Ubuntu, in `/home/frederic104/projects/dmft-self-energy`:
+On Ubuntu, in `~/projects/dmft-self-energy`:
 
 ```bash
-conda activate physai
+conda activate environment name
 pip install -e ".[dev]"
 pytest -q tests/test_ed.py
 python -m dmft_data.ed --output data/processed/ed/aim_small.npz --samples 8 --seed 0
@@ -99,7 +99,7 @@ temperature and broadening limit the reference's physical scope.
 ## Recommended learning workflow
 
 On the Ubuntu machine, activate `physai` and work in
-`/home/frederic104/projects/dmft-self-energy`:
+`~/projects/dmft-self-energy`:
 
 ```bash
 python -m dmft_data catalog --source data/raw/hdf5 --output data/metadata/run_review.json
