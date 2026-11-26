@@ -212,7 +212,7 @@ on one fixed split are repeated initializations, not independent physical states
 
 ## Recommended learning workflow
 
-On the Ubuntu machine, activate `physai` and work in
+On the Ubuntu machine, activate `environment` and work in
 `~/projects/dmft-self-energy`:
 
 ```bash
