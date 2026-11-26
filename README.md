@@ -256,11 +256,23 @@ Use only trusted local joblib artifacts. The evaluator verifies the development
 dataset hash, fixed parameters, exact frequency mesh and distinct physical
 states; it cannot establish that a dataset was never previously examined. It
 uses the saved validation winner without refitting and reports errors separately
-below, within, and above its training epsilon range. Only the selected model is
-saved by the validation workflow, so this does not compare every candidate on the
-external set. Freeze the protocol before using a genuinely independent test.
+below, within, and above its training epsilon range. For a prespecified comparison,
+add `--save-candidates` to a new validation-only run, then add `--all-candidates`
+to the external evaluation command. All saved candidates are scored on the same
+states without refitting; the bundle hash is checked. Older runs save only the
+winner. Freeze models, training split, test sampling and primary metrics before
+examining a genuinely independent test; the program cannot prove a test is untouched.
+The epsilon baseline has different input information. Treat all final scores as
+final evaluation, not a further tuning set. Only load trusted joblib artifacts.
 No interpolation or extrapolation result establishes lattice DOS accuracy or
 causality, and extrapolated values need not obey the Matsubara sign constraint.
+
+Remaining research work includes matched independent fixed-bath comparisons and
+low-frequency assessment; variation across bath parameters and interaction with
+identifiable inputs; a justified causal decoder against these baselines; and
+independent impurity spectral evaluation before any lattice property analysis.
+Track A still requires source input semantics and per-run convergence evidence.
+These are research questions, not results or claims of novelty.
 
 
 Inspect the per-candidate validation errors, train loss and bottleneck metrics;

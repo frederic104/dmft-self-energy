@@ -15,13 +15,14 @@ from .learning.models import EpsilonLinear, decode, encode
 from .provenance import sha256_file
 
 
-def evaluate(development: Path, result: Path, test: Path, output: Path) -> dict:
-    """Score one already selected model; no fitting or selection occurs here."""
+def evaluate(development: Path, result: Path, test: Path, output: Path,
+             all_candidates: bool = False) -> dict:
+    """Score frozen model(s); no fitting or selection occurs here."""
     development, result, test, output = map(Path, (development, result, test, output))
     if output.exists():
         raise FileExistsError(f"Output already exists: {output}")
     metrics_path = result / "metrics.json"
-    model_path = result / "selected_model.joblib"
+    model_path = result / ("candidates.joblib" if all_candidates else "selected_model.joblib")
     metrics = json.loads(metrics_path.read_text())
     if metrics["evaluation_phase"] != "validation_only":
         raise ValueError("Result must come from a validation-only run")
@@ -49,38 +50,52 @@ def evaluate(development: Path, result: Path, test: Path, output: Path) -> dict:
     if len(np.unique(tp[:, 0])) != len(tp) or np.isin(tp[:, 0], dp[:, 0]).any():
         raise ValueError("Test states must be unique and distinct from all development states")
     # Joblib uses pickle; only load artifacts created by a trusted local run.
-    model = joblib.load(model_path)
     selected = metrics["selected"]
-    if (selected == "epsilon_linear") != isinstance(model, EpsilonLinear):
-        raise ValueError("Selected model type does not match metrics")
-    inputs = tp[:, 0] if selected == "epsilon_linear" else encode(g0)
-    prediction = decode(model.predict(inputs), sigma.shape[1:])
+    if all_candidates and (not metrics.get("candidate_bundle_sha256") or
+                           sha256_file(model_path) != metrics["candidate_bundle_sha256"]):
+        raise ValueError("Candidate bundle missing or does not match validation metrics")
+    loaded = joblib.load(model_path)
+    models = loaded if all_candidates else {selected: loaded}
+    if all_candidates and (not isinstance(models, dict) or
+                           list(models) != metrics.get("saved_candidates") or
+                           set(models) != set(metrics["validation_complex_rmse"])):
+        raise ValueError("Candidate bundle does not match validation candidates")
     train_eps = dp[metrics["splits"]["train"], 0]
     masks = {"below": tp[:, 0] < train_eps.min(),
              "within_inclusive": (tp[:, 0] >= train_eps.min()) & (tp[:, 0] <= train_eps.max()),
              "above": tp[:, 0] > train_eps.max()}
-    groups = {}
-    for name, mask in masks.items():
-        entry = {"count": int(mask.sum())}
-        if mask.any():
-            difference = prediction[mask] - sigma[mask]
-            entry.update(complex_rmse=float(np.sqrt(np.mean(np.abs(difference) ** 2))),
-                         first_8_complex_rmse=float(np.sqrt(np.mean(np.abs(difference[:, :8]) ** 2))),
-                         real_rmse=float(np.sqrt(np.mean(difference.real ** 2))),
-                         imaginary_rmse=float(np.sqrt(np.mean(difference.imag ** 2))),
-                         positive_imaginary_fraction=float(np.mean(prediction[mask].imag > 1e-10)))
-        groups[name] = entry
+    candidate_groups, predictions = {}, {}
+    for candidate, model in models.items():
+        if (candidate == "epsilon_linear") != isinstance(model, EpsilonLinear):
+            raise ValueError("Model type does not match candidate")
+        inputs = tp[:, 0] if candidate == "epsilon_linear" else encode(g0)
+        prediction = decode(model.predict(inputs), sigma.shape[1:])
+        predictions[candidate] = prediction
+        groups = {}
+        for name, mask in masks.items():
+            entry = {"count": int(mask.sum())}
+            if mask.any():
+                difference = prediction[mask] - sigma[mask]
+                entry.update(complex_rmse=float(np.sqrt(np.mean(np.abs(difference) ** 2))),
+                             first_8_complex_rmse=float(np.sqrt(np.mean(np.abs(difference[:, :8]) ** 2))),
+                             real_rmse=float(np.sqrt(np.mean(difference.real ** 2))),
+                             imaginary_rmse=float(np.sqrt(np.mean(difference.imag ** 2))),
+                             positive_imaginary_fraction=float(np.mean(prediction[mask].imag > 1e-10)))
+            groups[name] = entry
+        candidate_groups[candidate] = groups
     report = {"selected": selected, "development_sha256": sha256_file(development),
               "test_sha256": sha256_file(test), "model_sha256": sha256_file(model_path),
               "validation_metrics_sha256": sha256_file(metrics_path),
               "training_epsilon_range": [float(train_eps.min()), float(train_eps.max())],
-              "groups": groups, "python": platform.python_version(),
+              "groups": candidate_groups[selected], "candidate_groups": candidate_groups,
+              "python": platform.python_version(),
               "numpy": np.__version__, "sklearn": sklearn.__version__,
               "note": "Separate fixed-bath impurity states; sign check does not prove causality."}
     output.mkdir(parents=True)
     (output / "metrics.json").write_text(json.dumps(report, indent=2) + "\n")
     np.savez_compressed(output / "predictions.npz", parameters=tp, omega=tw,
-                        reference=sigma, prediction=prediction)
+                        reference=sigma, prediction=predictions[selected],
+                        **{f"candidate_{name}": value for name, value in predictions.items()})
     return report
 
 
@@ -88,8 +103,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("development", "result", "test", "output"):
         parser.add_argument(f"--{name}", type=Path, required=True)
+    parser.add_argument("--all-candidates", action="store_true")
     args = parser.parse_args()
-    print(json.dumps(evaluate(args.development, args.result, args.test, args.output), indent=2))
+    print(json.dumps(evaluate(args.development, args.result, args.test, args.output,
+                              args.all_candidates), indent=2))
 
 
 if __name__ == "__main__":

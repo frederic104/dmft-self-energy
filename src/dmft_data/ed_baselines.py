@@ -61,12 +61,14 @@ def _network_diagnostics(model: Baseline, train_x: np.ndarray, val_x: np.ndarray
 def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
         include_latent: bool = False, model_seed: int | None = None,
         compare_activations: bool = False, validation_only: bool = False,
-        include_epsilon_linear: bool = False) -> dict:
+        include_epsilon_linear: bool = False, save_candidates: bool = False) -> dict:
     """Fit fixed-budget baselines, select on validation, evaluate test once."""
     dataset, output = Path(dataset), Path(output)
     model_seed = seed if model_seed is None else model_seed
     if compare_activations and not include_latent:
         raise ValueError("Activation comparison requires include_latent")
+    if save_candidates and not validation_only:
+        raise ValueError("Saving candidate bundle requires validation_only")
     if output.exists():
         raise FileExistsError(f"Output already exists: {output}")
     with np.load(dataset, allow_pickle=False) as data:
@@ -209,6 +211,11 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
             "validation_coverage": linear.coverage(params[splits["validation"], 0]),
         }
     output.mkdir(parents=True)
+    if save_candidates:
+        bundle = output / "candidates.joblib"
+        joblib.dump(trained, bundle)
+        metrics["candidate_bundle_sha256"] = sha256_file(bundle)
+        metrics["saved_candidates"] = list(trained)
     diagnostics = {
         "interpretation": "Oracle offsets use test targets and are descriptive only; "
                           "sign checks are necessary, not sufficient, for causality.",
@@ -289,10 +296,13 @@ def main():
                         help="Do not predict or score the reserved test samples")
     parser.add_argument("--include-epsilon-linear", action="store_true",
                         help="Add epsilon_d interpolation with endpoint linear extrapolation (fixed bath/U only)")
+    parser.add_argument("--save-candidates", action="store_true",
+                        help="Save all fitted candidates for a frozen external comparison")
     args = parser.parse_args()
     print(json.dumps(run(args.dataset, args.output, args.seed, args.split,
                          args.include_latent, args.model_seed, args.compare_activations,
-                         args.validation_only, args.include_epsilon_linear), indent=2))
+                         args.validation_only, args.include_epsilon_linear,
+                         args.save_candidates), indent=2))
 
 
 if __name__ == "__main__":
