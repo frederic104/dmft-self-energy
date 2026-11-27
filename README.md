@@ -357,6 +357,55 @@ not independent confirmations. This closes the no-refitting evaluation path;
 multi-seed evidence, final scientific assessment and ED spectral comparison
 remain distinct outstanding work.
 
+### Candidate search is closed: prepare the three-seed final panel
+
+The seed-441 unseen-epsilon result retained the Sigma/property trade-off: PCA8
+had lowest Sigma RMSE, grid+G had lowest first-eight G RMSE on both axes, and
+causal Sigma-only had lowest occupation RMSE on energy only. No candidate
+dominated PCA8 on all three metrics. These results do not authorize another
+architecture, pole or loss-weight search in the closing workflow.
+
+The panel and budgets above are now closed. `prepare-final` preserves the frozen
+seed31 checkpoints and trains only the two declared neural candidates at seeds
+32 and 33. It reuses original training states/scalers, resets the hidden weights
+with those seeds using the existing decoder initializer, and uses the same 100
+L-BFGS-B iteration cap and alpha=.001. It exposes no architecture, seed-grid,
+weight or budget tuning options. PCA8 is reused across seeds, not retrained.
+It records actual optimizer termination and stops with a failure record if
+preparation fails rather than silently dropping a seed. Neither validation nor
+test targets enter training. Prior exploratory commands remain for provenance,
+not as part of the closed-panel workflow.
+
+```bash
+python -m dmft_data.ed_frozen prepare-final \
+  --panel reports/local/frozen_panel_v1 \
+  --study reports/local/aim_properties_20261127_144210 \
+  --result reports/local/decoder_comparison_20261127_200055 \
+  --output reports/local/final_panel_v1
+python -m dmft_data.ed_frozen evaluate \
+  --panel reports/local/final_panel_v1 --output reports/local/final_reserved_v1
+```
+
+Preparation verifies that source dataset/bundle/metrics hashes match the frozen
+panel, copies the original reserved partition without scoring it, and records
+the new protocol and model hashes. Only the second command opens the scores.
+Evaluation reuses predict/property analysis, verifies reserved-data hashes and
+does not regenerate ED states, fit, pick a best seed or average model predictions.
+It writes `comparison.csv`, per-state predictions and `seed_summary.csv` with
+mean/population SD of each seed's RMSE and explicit successful-seed counts. This
+is initialization variation on the same physical states, not a confidence
+interval over independent physical samples. Failed evaluations remain visible.
+
+This evaluation is labeled `frozen_reserved_scale`: scale 1.15 with the original
+shared epsilon values. It is a different question from new epsilon at scale .85,
+and neither is evidence of arbitrary-bath/material generalization. No automatic
+winner is selected; report trade-offs against PCA8 under the fixed budget. The
+single-seed scale-.85 result is already inspected development evidence. If the
+reserved scores trigger further model changes, call that further work exploratory
+and obtain a new untouched final set. After recording the three-seed reserved
+result, close the Matsubara/occupation milestone with its limits; ED impurity
+spectral reconstruction remains separate unfinished Track B work.
+
 ### Matched Sigma-only versus Sigma+G refinement
 
 Reuse the completed integrated study; no new ED data or baseline training is

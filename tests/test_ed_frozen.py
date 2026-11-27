@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from sklearn.preprocessing import StandardScaler
 
-from dmft_data.ed_frozen import PANEL, evaluate, freeze
+from dmft_data.ed_frozen import PANEL, evaluate, freeze, prepare_final
 from dmft_data.ed_objective import run_comparison
 from dmft_data.ed_workflow import run_study
 from dmft_data.learning.models import Baseline
@@ -69,3 +69,56 @@ def test_frozen_panel_no_refitting_and_target_independence(tmp_path, monkeypatch
         handle.write(b"changed")
     with pytest.raises(ValueError, match="checksum"):
         evaluate(panel, tmp_path / "tampered")
+
+
+def test_closed_panel_preparation_and_reserved_evaluation(tmp_path, monkeypatch):
+    import dmft_data.ed_frozen as module
+    study, result, panel = (tmp_path / n for n in ("study", "result", "panel"))
+    run_study(study, samples=6, frequency_count=16, axes=("energy",))
+    run_comparison(study, result, decoder_comparison=True, max_iter=100)
+    freeze(study, result, panel)
+    source = json.loads((result / "energy/seed_31/metrics.json").read_text())
+    with np.load(study / "energy/dataset.npz") as data:
+        training_sigma = data["sigma"][source["splits"]["train"]].copy()
+        reserved_sigma = data["sigma"][source["splits"]["test"]].copy()
+    original_refine = module.refine_model
+    calls = []
+
+    def train_only(model, x, sigma, *args, **kwargs):
+        np.testing.assert_array_equal(sigma, training_sigma)
+        calls.append(kwargs["weight"])
+        return original_refine(model, x, sigma, *args, **kwargs)
+
+    monkeypatch.setattr(module, "refine_model", train_only)
+    final = tmp_path / "final"
+    protocol = prepare_final(panel, study, result, final)
+    assert calls == [1., 0., 1., 0.]
+    assert protocol["search_status"] == "closed"
+    assert protocol["model_seeds"] == [31, 32, 33]
+    assert "evaluation_seed" not in protocol
+    old = joblib.load(panel / "panel.joblib")
+    new = joblib.load(final / "panel.joblib")
+    for name in PANEL:
+        for a, b in zip(old["energy_seed_31"][name].model.coefs_ if name != PANEL[0] else [old["energy_seed_31"][name].model.coef_],
+                        new["energy_seed_31"][name].model.coefs_ if name != PANEL[0] else [new["energy_seed_31"][name].model.coef_]):
+            np.testing.assert_array_equal(a, b)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Reserved evaluation may neither solve new ED states nor fit")
+
+    monkeypatch.setattr(module, "generate_small_dataset", forbidden)
+    monkeypatch.setattr(module, "refine_model", forbidden)
+    monkeypatch.setattr(StandardScaler, "fit", forbidden)
+    report = evaluate(final, tmp_path / "evaluated")
+    assert report["phase"] == "frozen_reserved_scale"
+    assert len(report["comparisons"]) == 9
+    assert all(r["status"] == "ok" for r in report["comparisons"])
+    assert report["seed_summary"][0]["sigma_rmse_std"] == pytest.approx(0, abs=1e-14)
+    assert all(r["seed_count"] == 3 for r in report["seed_summary"])
+    with np.load(tmp_path / "evaluated/energy/dataset.npz") as data:
+        np.testing.assert_array_equal(data["sigma"], reserved_sigma)
+        assert np.all(data["bath_scale"] == 1.15)
+    with (final / "energy/reserved.npz").open("ab") as handle:
+        handle.write(b"tamper")
+    with pytest.raises(ValueError, match="Reserved dataset checksum"):
+        evaluate(final, tmp_path / "bad")
