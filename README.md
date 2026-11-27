@@ -69,11 +69,14 @@ to full-target Ridge in Sigma, reconstructed G and impurity occupation. If good
 Sigma RMSE coexists with poor property predictions, investigate low-frequency
 error propagation and the training objective before increasing model complexity.
 
-Subsequent steps depend on that result: compare a Green-function-aware training
-objective to the current self-energy objective; vary U with identifiable inputs;
-compare a causal decoder to the unconstrained baseline; then assess impurity
-spectra against ED. These are proposed
-experiments, not demonstrated contributions. AIM representation learning is already
+The next comparison is now implemented: matched refinement with a Sigma-only or
+Sigma+G objective, described below. The research question is whether the training
+objective and compression jointly preserve observables under bath transfer.
+Keep data coverage fixed for this comparison. A causal decoder is the subsequent
+representation experiment; assess its physical consistency and accuracy under
+both objectives before moving to impurity spectra. Vary U or extend materials
+only when that resolves a specific limitation. These are research hypotheses,
+not demonstrated general contributions. AIM representation learning is already
 studied by [Arsenault et al.](https://doi.org/10.1103/PhysRevB.90.155136), and the
 DFT-derived G0-to-self-energy task is established by
 [Mitra and Banerjee](https://doi.org/10.1038/s41524-026-02277-6).
@@ -188,6 +191,78 @@ embedding/projectors, chemical potential and double-counting conventions, then
 a lattice Dyson calculation. The AIM G0 here is a known finite-bath impurity
 input, not a verified Track A DFT input or a self-consistent DMFT Weiss function.
 No unimplemented spectral or lattice calculation is presented as a result.
+
+### Matched Sigma-only versus Sigma+G refinement
+
+Reuse the completed integrated study; no new ED data or baseline training is
+needed. The independent unit remains one AIM parameter tuple, with the same
+held-out bath scale and shared epsilon values. The default comparison uses the
+saved direct MLP and latent MLP with dimension 8. Each original checkpoint is
+copied twice: one copy receives Sigma-only refinement and the other Sigma+G
+refinement. Neither treatment starts from the other treatment's updated weights.
+Unmodified nearest, Ridge, PCA and MLP candidates remain in the output table.
+
+```bash
+export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
+python -m dmft_data.ed_objective \
+  --study reports/local/aim_properties_20261127_144210 \
+  --output reports/local/green_objective_v1
+```
+
+The loss is `L_sigma + lambda * L_G + L2`, where:
+
+- `L_sigma` is mean squared error over concatenated real/imaginary Sigma,
+  standardized with the original training-only per-coordinate scaler. It is
+  not the unweighted physical Sigma RMSE used in the evaluation table.
+- `L_G = mean(abs(G_pred-G_ED)**2) / mean_train(abs(G_ED)**2)` is dimensionless.
+  G_pred is computed with the scalar AIM Dyson relation. No validation or test
+  values determine scaling, gradients, stopping or checkpoint choice.
+- `L2 = alpha/(2*N_train) * sum(weights**2)` excludes biases; alpha is 0.001
+  for both treatments. No occupation targets enter the loss.
+
+Defaults are lambda=0 for the control and lambda=1 for the treatment, with 100
+full-batch L-BFGS-B iterations and at most 2000 optimizer objective evaluations
+each. Both use the same weights, frozen scalers, ReLU architecture and settings.
+This is a matched **refinement** experiment, not a from-scratch comparison with
+the original Adam training. NumPy implements analytic real/imaginary Dyson
+derivatives and network backpropagation; SciPy runs the optimizer. Tests compare
+the analytic derivatives to central finite differences through every layer.
+No clipping, causal projection or analytic continuation is introduced.
+
+`--green-weight` and `--max-iter` expose the protocol explicitly; a changed value
+defines a new exploratory comparison. Do not search a large lambda grid simply
+to improve this validation set. Actual iterations, optimizer evaluations,
+termination messages, loss histories, versions, source/checkpoint hashes and
+training-derived normalization are saved. Hitting the budget is reported as
+`optimizer_success=false`, not convergence. Numerical failures are retained in
+`failures.json`; successful but budget-limited predictors remain evaluable.
+
+Read `comparison.csv` alongside the per-run `metrics.json`. Compare
+`*_refine_sigma_g` with the **matching** `*_refine_sigma` row first, then compare
+to original models and PCA 8/Ridge. Selection still uses Sigma validation RMSE;
+it does not imply the best G or occupation predictor. Assess both bath cases:
+better G and occupation at acceptable Sigma error supports retaining the joint
+objective; inconsistent changes support a conditional conclusion, not a universal
+advantage. No numerical acceptance threshold has been established for material
+properties. Final test remains reserved until the comparison protocol is frozen.
+
+G supervision here is determined by the same ED Sigma and known G0 through
+Dyson. It changes the importance assigned to prediction errors; it does not add
+independent information or prove causality. The proposed contribution is the
+effect of this objective together with representation constraints on observable
+preservation, subject to comparison with existing work.
+
+Track A should be described separately. The
+[source paper](https://doi.org/10.1038/s41524-026-02277-6) treats SrVO3, CaVO3,
+BaVO3, SrNbO3 and BaNbO3 as formal d1 systems in ideal undistorted cubic
+Pm-3m structures. This is the paper's calculation setup, not a statement that
+all experimental phases or all local archived structures are identical.
+Shared structure does not make bandwidth, interactions or orbital information
+interchangeable. The current scalar two-bath AIM data contain no crystal
+structure and are not material-specific d1 perovskite calculations. Connecting
+this objective to Track A requires verified inputs/targets and the appropriate
+orbital/lattice Dyson operation, not directly substituting a DFT local G0 into
+the scalar impurity expression. See [the source evidence](docs/upstream_data_contract.md).
 
 `dmft_data.ed` diagonalizes a spinful impurity and two spin-degenerate bath
 sites in the 64-state Fock space. With orbital order
