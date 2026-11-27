@@ -406,6 +406,62 @@ and obtain a new untouched final set. After recording the three-seed reserved
 result, close the Matsubara/occupation milestone with its limits; ED impurity
 spectral reconstruction remains separate unfinished Track B work.
 
+### After search closure: frozen impurity spectra against ED
+
+The Matsubara comparison is closed. Keep PCA8 as the Sigma baseline, grid+G as
+a conditional property-oriented alternative and the current causal model as a
+control, without selecting new candidates from the reserved scores. The next
+assessment uses the **same frozen causal model**, not a better-fitted spectral
+model. It cannot establish a spectral ranking among all three candidates:
+PCA/grid predictors have only Matsubara outputs, so they are explicitly marked
+`unsupported` rather than subjected to an unvalidated continuation.
+
+```bash
+python -m dmft_data.ed_spectra \
+  --panel reports/local/final_panel_v1 \
+  --matsubara-result reports/local/final_reserved_v1 \
+  --output reports/local/final_spectra_v1
+```
+
+`PoleBaseline.predict_z` evaluates the stored real poles and positive residues
+at z=energy+i*eta, retaining the original Matsubara G0 input to the network.
+`noninteracting_green_z` supplies the same finite-bath G0; Dyson reconstructs
+the retarded impurity G. Existing ED solve/spectral functions provide references.
+Each physical state is diagonalized once and reused over seeds and broadenings.
+The default protocol uses [-8,8], 1601 grid points and eta=.05,.1 in AIM units.
+These two specified broadenings describe sensitivity, not an optimization over
+eta. Do not tune the grid/broadening to improve apparent agreement. Model,
+protocol and reserved-data hashes are verified; no fitting or reselection occurs.
+
+Outputs include per-seed spectrum RMSE and integrated absolute error, negative
+weight fraction, finite-window spectral weight, and Fermi-weighted occupation.
+Occupation is compared both to identically broadened ED and to exact thermal ED
+occupation. The ED broadening/window bias is reported separately; spectra are
+never renormalized or clipped to conceal missing weight. Sigma_infinity and the
+1/z coefficient are obtained analytically from the learned constant and summed
+residues and compared to U*n and U^2*n*(1-n), respectively, for this spin-symmetric
+single-orbital AIM. No moment constraint is newly imposed on the model.
+
+`comparison.csv` retains unsupported/failed rows. NPZ files contain all state
+spectra and integrals; example PNGs show the first reserved state (index 0), not
+a hand-picked best state. Passing `--matsubara-result` checks that the prior
+report used the identical model/protocol/states and carries its seed summary
+into the spectral summary for a consolidated record. Spectra remain broadened
+finite-bath impurity functions, not lattice DOS. Accurate moments or causality
+alone do not demonstrate spectral accuracy. If spectra are poor, report that
+limitation rather than reopening the completed candidate search. Continuation
+for the other candidates and application to real materials are separate future
+work, not silently completed by this diagnostic.
+
+The local frozen seed31/32/33 panel was evaluated without retuning: mean
+integrated absolute spectral error was 0.981/0.988 (coupling/energy) at eta=.05
+and 0.596/0.627 at eta=.1. At eta=.05 the mean finite-window weights were about
+0.996 for both prediction and ED. Thus nearly matching total weight did not
+imply accurate peak structure. These are conditional finite-bath results at the
+stated broadenings, not a new model-selection criterion or evidence about the
+unsupported PCA/grid spectra. The closed study supports reporting this causal
+model's spectral limitation rather than reopening candidate search.
+
 ### Matched Sigma-only versus Sigma+G refinement
 
 Reuse the completed integrated study; no new ED data or baseline training is

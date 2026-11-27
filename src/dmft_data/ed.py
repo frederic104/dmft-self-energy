@@ -148,7 +148,12 @@ def green_z(result: EDResult, z: np.ndarray, spin: int | None = None) -> np.ndar
 
 def noninteracting_green_iw(params: AIMParameters, omega: np.ndarray) -> np.ndarray:
     """Return analytic impurity G0 for the same finite bath and convention."""
-    z = 1j * np.asarray(omega, dtype=float) + params.chemical_potential
+    return noninteracting_green_z(params, 1j * np.asarray(omega, dtype=float))
+
+
+def noninteracting_green_z(params: AIMParameters, z: np.ndarray) -> np.ndarray:
+    """Analytic impurity G0 at complex frequencies measured relative to mu."""
+    z = np.asarray(z, dtype=complex) + params.chemical_potential
     hybridization = sum(
         coupling**2 / (z - energy)
         for energy, coupling in zip(
