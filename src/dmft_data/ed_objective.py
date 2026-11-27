@@ -14,13 +14,16 @@ import scipy
 import sklearn
 
 from .ed_validation import analyze, load_candidates
+from .learning.causal_decoder import decoder_starts
 from .learning.dyson_objective import refine_model
 from .learning.models import decode, encode
 from .provenance import sha256_file
 
 
 def run_comparison(study: Path, output: Path, *, candidates=("mlp", "latent_mlp_8"),
-                   green_weight: float = 1., max_iter: int = 100) -> dict:
+                   green_weight: float = 1., max_iter: int = 100,
+                   decoder_comparison: bool = False, pole_count: int = 16,
+                   pole_bound: float = 4.) -> dict:
     """Refine independent copies of saved models; never train on held-out targets.
 
     Unmodified candidates remain in the comparison. Each new pair shares the
@@ -34,17 +37,21 @@ def run_comparison(study: Path, output: Path, *, candidates=("mlp", "latent_mlp_
             or not np.isfinite(green_weight) or green_weight <= 0 or max_iter < 1):
         raise ValueError("Need unique candidates, positive G weight and iteration budget")
     original = json.loads((study / "recipe.json").read_text())
+    if decoder_comparison:
+        candidates = ("latent_mlp_8",)
     if original["evaluation_phase"] != "validation_only":
         raise ValueError("Expected a validation-only AIM study")
     recipe = {"source_study": str(study.resolve()), "source_recipe_sha256": sha256_file(study / "recipe.json"),
               "evaluation_phase": "validation_only", "candidates": list(candidates),
               "green_weight": green_weight, "max_iter": max_iter,
+              "decoder_comparison": decoder_comparison,
+              "pole_count": pole_count, "pole_bound": pole_bound,
               "selection": "Sigma validation RMSE only; assess paired changes in G and occupation separately",
               "source_recipe": original, "python": platform.python_version(),
               "numpy": np.__version__, "scipy": scipy.__version__, "sklearn": sklearn.__version__}
     source = Path(__file__).parent
     recipe["source_sha256"] = {name: sha256_file(source / name) for name in (
-        "ed_objective.py", "learning/dyson_objective.py", "learning/models.py",
+        "ed_objective.py", "learning/dyson_objective.py", "learning/causal_decoder.py", "learning/models.py",
         "ed_validation.py", "ed_properties.py")}
     output.mkdir(parents=True)
     (output / "recipe.json").write_text(json.dumps(recipe, indent=2) + "\n")
@@ -66,13 +73,19 @@ def run_comparison(study: Path, output: Path, *, candidates=("mlp", "latent_mlp_
                 # Only train targets enter refinement; test arrays are never scored.
                 g0, sigma, green = (data[k][train].copy() for k in ("g0", "sigma", "green"))
                 val_g0, val_sigma = (data[k][validation].copy() for k in ("g0", "sigma"))
+                omega = data["omega"].copy()
+            starts = {name: models[name] for name in candidates}
+            if decoder_comparison:
+                starts, metrics["decoder_design"] = decoder_starts(
+                    models["latent_mlp_8"], sigma, omega, seed=seed,
+                    pole_count=pole_count, pole_bound=pole_bound)
             fit_info = {}
-            for name in candidates:
+            for name, start in starts.items():
                 for treatment, weight in (("sigma", 0.), ("sigma_g", green_weight)):
                     label = f"{name}_refine_{treatment}"
                     print(f"Running {axis}, seed {seed}, {label}", flush=True)
                     try:
-                        fitted, info = refine_model(models[name], encode(g0), sigma, g0, green,
+                        fitted, info = refine_model(start, encode(g0), sigma, g0, green,
                                                     weight=weight, max_iter=max_iter)
                         prediction = decode(fitted.predict(encode(val_g0)), val_sigma.shape[1:])
                         if not np.isfinite(prediction).all():
@@ -131,7 +144,8 @@ def run_comparison(study: Path, output: Path, *, candidates=("mlp", "latent_mlp_
                 writer.writerows(rows)
             (output / "failures.json").write_text(json.dumps(failures, indent=2) + "\n")
     summary = {"recipe": recipe, "comparisons": rows, "failures": failures,
-               "interpretation": "Matched checkpoint refinement, not from-scratch training or a causal decoder. Validation only; no property target used as an input."}
+               "interpretation": ("Reset latent-8 grid/causal decoder x loss comparison." if decoder_comparison
+                                  else "Matched checkpoint refinement.") + " Validation only; test unscored."}
     (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return summary
 
@@ -143,9 +157,15 @@ def main():
     parser.add_argument("--candidates", nargs="+", default=["mlp", "latent_mlp_8"])
     parser.add_argument("--green-weight", type=float, default=1.)
     parser.add_argument("--max-iter", type=int, default=100)
+    parser.add_argument("--decoder-comparison", action="store_true",
+                        help="Reset latent-8 networks and compare grid/causal heads under both losses")
+    parser.add_argument("--pole-count", type=int, default=16)
+    parser.add_argument("--pole-bound", type=float, default=4.)
     args = parser.parse_args()
     run_comparison(args.study, args.output, candidates=tuple(args.candidates),
-                   green_weight=args.green_weight, max_iter=args.max_iter)
+                   green_weight=args.green_weight, max_iter=args.max_iter,
+                   decoder_comparison=args.decoder_comparison,
+                   pole_count=args.pole_count, pole_bound=args.pole_bound)
     print(f"Saved {args.output / 'comparison.csv'}")
 
 
