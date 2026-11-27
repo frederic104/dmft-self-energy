@@ -12,6 +12,19 @@ from .models import Baseline, encode
 class PoleBaseline(Baseline):
     """Real constant plus positive residues on a prespecified real pole grid."""
 
+    def pole_parameters(self, x):
+        """Return learned constants and residues without any refitting."""
+        raw = self.model.predict(self.x_scaler.transform(x))
+        return raw[:, 0], np.logaddexp(0, raw[:, 1:])
+
+    def predict_z(self, x, z):
+        """Evaluate the stored rational function, not continuation of grid outputs."""
+        z = np.asarray(z, dtype=complex)
+        if z.ndim != 1 or not np.isfinite(z).all() or np.any(z.imag <= 0):
+            raise ValueError("Expected finite upper-half-plane frequencies")
+        constant, residues = self.pole_parameters(x)
+        return constant[:, None] + residues @ (1 / (z[:, None] - self.poles)).T
+
     def transform_output(self, raw):
         coefficients = np.column_stack((raw[:, 0], np.logaddexp(0, raw[:, 1:])))
         return self.y_scaler.transform(coefficients @ self.basis.T)
