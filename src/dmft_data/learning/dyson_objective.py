@@ -39,6 +39,7 @@ class NetworkObjective:
 
     def __init__(self, baseline, x, sigma, g0, green, weight, alpha):
         self.scaler = baseline.y_scaler
+        self.baseline = baseline
         self.x = baseline.x_scaler.transform(x)
         self.target = self.scaler.transform(encode(sigma))
         self.g0, self.green = g0, green
@@ -63,8 +64,12 @@ class NetworkObjective:
         for i, (w, b) in enumerate(zip(weights, biases)):
             value = activations[-1] @ w + b
             activations.append(np.maximum(value, 0) if i < self.layers - 1 else value)
-        loss, delta, parts = output_loss(activations[-1], self.target, self.scaler,
+        prediction = (self.baseline.transform_output(activations[-1])
+                      if hasattr(self.baseline, "transform_output") else activations[-1])
+        loss, delta, parts = output_loss(prediction, self.target, self.scaler,
                                        self.g0, self.green, self.green_scale2, self.weight)
+        if hasattr(self.baseline, "output_gradient"):
+            delta = self.baseline.output_gradient(activations[-1], delta)
         penalty = self.alpha / (2 * len(self.x)) * sum(np.sum(w**2) for w in weights)
         dw, db = [None] * self.layers, [None] * self.layers
         for i in reversed(range(self.layers)):

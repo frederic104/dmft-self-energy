@@ -72,8 +72,8 @@ error propagation and the training objective before increasing model complexity.
 The next comparison is now implemented: matched refinement with a Sigma-only or
 Sigma+G objective, described below. The research question is whether the training
 objective and compression jointly preserve observables under bath transfer.
-Keep data coverage fixed for this comparison. A causal decoder is the subsequent
-representation experiment; assess its physical consistency and accuracy under
+Keep data coverage fixed for this comparison. A fixed-pole causal decoder is now
+available as the representation experiment; assess its consistency and accuracy under
 both objectives before moving to impurity spectra. Vary U or extend materials
 only when that resolves a specific limitation. These are research hypotheses,
 not demonstrated general contributions. AIM representation learning is already
@@ -114,7 +114,7 @@ included in this repository.
 - HDF5 extraction and storage diagnostics support the observed TRIQS schema.
 - Paired preparation and CPU baseline training are available through one CLI.
 - Physical input semantics and per-run convergence require external evidence.
-- Causal learned decoders and lattice spectral validation remain future work.
+- A scalar fixed-pole causal decoder comparison is available; lattice spectral validation remains future work.
 - Track B includes a small finite-temperature, two-bath AIM ED reference.
 
 ## Installation
@@ -191,6 +191,45 @@ embedding/projectors, chemical potential and double-counting conventions, then
 a lattice Dyson calculation. The AIM G0 here is a known finite-bath impurity
 input, not a verified Track A DFT input or a self-consistent DMFT Weiss function.
 No unimplemented spectral or lattice calculation is presented as a result.
+
+### Decoder x loss comparison on the same saved data
+
+Use the existing runner with `--decoder-comparison` to train four candidates:
+latent-8 grid decoder / fixed-pole causal decoder, each with Sigma-only / Sigma+G
+loss. No new ED data or separate evaluation pipeline is generated.
+
+```bash
+python -m dmft_data.ed_objective \
+  --study reports/local/aim_properties_20261127_144210 \
+  --output reports/local/decoder_comparison_v1 --decoder-comparison
+```
+
+This mode reuses the existing training-only scalers and (64,8,64) architecture,
+but resets all network weights. Both heads receive identical initial hidden
+weights. The grid head starts near the training mean Sigma; the causal head
+near its positive-residue least-squares approximation. Each loss treatment
+clones the corresponding start, with the same optimizer budget and regularizer.
+This is not a comparison against a pretrained grid decoder. Original baselines
+remain as context in the same output table.
+
+The causal head predicts a real constant and softplus-positive residues:
+`Sigma(z)=constant+sum_k residue_k/(z-pole_k)`. Default poles are 16 equally
+spaced real values in [-4,4] in the AIM energy units. They are a prespecified
+representation grid, not the two physical bath energies. `--pole-count` and
+`--pole-bound` explicitly change that protocol; they are not fitted to validation.
+Latent dimension 8 and pole count 16 are different quantities. Fixed poles
+restrict representation capacity; this first experiment does not learn pole
+positions. Positivity guarantees the scalar upper-half-plane imaginary sign,
+not correct moments, occupation, real-frequency spectra or lattice DOS.
+
+`metrics.json` includes `decoder_design`: head parameter counts, initialization,
+and a training-only per-state bounded linear fit's physical Sigma RMSE and solver
+success. That fit is a representation diagnostic, not a predictor and not a test
+score. Output dimensions/initial predictions differ, so this comparison probes
+the whole decoder parameterization, not positivity alone. Data, loss scaling,
+hidden architecture, optimizer caps and held-out partitions remain shared.
+No high-frequency moment penalty is added in this step. Read the four candidate
+rows together; improved causality does not imply improved G or occupation.
 
 ### Matched Sigma-only versus Sigma+G refinement
 
