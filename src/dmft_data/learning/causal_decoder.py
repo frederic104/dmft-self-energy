@@ -26,7 +26,8 @@ class PoleBaseline(Baseline):
         return self.y_scaler.inverse_transform(self.transform_output(raw))
 
 
-def decoder_starts(template, sigma, omega, *, seed, pole_count=16, pole_bound=4.):
+def decoder_starts(template, sigma, omega, *, seed, pole_count=16, pole_bound=4.,
+                   pole_spacing="uniform"):
     """Reset both networks; reuse only architecture and training-fitted scalers.
 
     Hidden architecture and initial hidden weights are identical. Output heads
@@ -49,6 +50,11 @@ def decoder_starts(template, sigma, omega, *, seed, pole_count=16, pole_bound=4.
         grid.model.intercepts_[i] = np.zeros(w.shape[1])
     grid.model.coefs_[-1] *= .01
     poles = np.linspace(-pole_bound, pole_bound, pole_count)
+    if pole_spacing == "low-frequency":
+        scale = float(omega.min())
+        poles = scale * np.sinh(np.linspace(-1., 1., pole_count) * np.arcsinh(pole_bound / scale))
+    elif pole_spacing != "uniform":
+        raise ValueError("Unknown pole spacing")
     complex_basis = np.column_stack((np.ones(len(omega)), 1 / (1j * omega[:, None] - poles)))
     basis = np.concatenate((complex_basis.real, complex_basis.imag), axis=0)
     design = basis / template.y_scaler.scale_[:, None]
@@ -70,7 +76,14 @@ def decoder_starts(template, sigma, omega, *, seed, pole_count=16, pole_bound=4.
     reconstruction = np.stack([f.x for f in fits]) @ basis.T
     error = reconstruction - encode(sigma)
     real, imag = np.split(error, 2, axis=1)
+    squared = real**2 + imag**2
+    total = float(squared.sum())
     info = {"pole_count": pole_count, "poles": poles.tolist(), "latent_dimension": 8,
+            "pole_spacing": pole_spacing, "omega_min": float(omega.min()),
+            "training_frequency_rmse": np.sqrt(squared.mean(axis=0)).tolist(),
+            "training_first_frequency_error_share": float(squared[:, 0].sum() / total) if total else 0.,
+            "training_first_8_error_share": float(squared[:, :8].sum() / total) if total else 0.,
+            "training_standardized_mse": float(np.mean((error / template.y_scaler.scale_)**2)),
             "initialization": "reset shared hidden weights; mean-based output heads; no pretrained weights",
             "training_representation_rmse": float(np.sqrt(np.mean(real**2 + imag**2))),
             "representation_fit_success": all(f.success for f in fits) and bool(mean_fit.success),

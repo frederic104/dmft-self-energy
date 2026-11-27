@@ -231,6 +231,82 @@ hidden architecture, optimizer caps and held-out partitions remain shared.
 No high-frequency moment penalty is added in this step. Read the four candidate
 rows together; improved causality does not imply improved G or occupation.
 
+### Resolve the measured pole-grid error before adding model complexity
+
+The uniform 16-pole training fits on the seed-31 study concentrate about 98.5%
+(coupling) / 98.8% (energy) of physical squared error at the first frequency.
+This is an observed representation-fit diagnostic, not a validation prediction.
+The first frequency is pi/20 ~= 0.157, while the nearest uniform poles are
++/-0.267. This motivates testing resolution near zero; it does not establish
+where the true self-energy poles are.
+
+`--pole-spacing low-frequency` keeps the pole count and endpoints fixed and uses
+`p_k = w_min * sinh(t_k * asinh(bound/w_min))`, with equally spaced t_k in [-1,1].
+Only the known frequency mesh determines this grid; no targets select positions.
+The default remains `uniform` for reproducibility. Existing loss, architecture,
+initialization policy and budgets are unchanged. This is a prescribed alternative,
+not adaptive pole learning or an automatic validation search.
+
+Use `--representation-only` with `--decoder-comparison` to inspect training-only
+bounded fits without network optimization, checkpoint creation or held-out scoring:
+
+```bash
+python -m dmft_data.ed_objective \
+  --study reports/local/aim_properties_20261127_144210 \
+  --output reports/local/pole_resolution_low \
+  --decoder-comparison --representation-only --pole-spacing low-frequency
+```
+
+`comparison.csv` reports training physical RMSE, standardized MSE and first-point/
+first-eight error shares. Each `representation.json` contains per-frequency RMSE,
+training indices, source hashes and solver status. These standardized-error fits
+are not physical-RMSE lower bounds. On the existing seed-31 training data, the
+alternative reduced physical fit RMSE from 0.05830 to 0.00261 (coupling) and
+0.05251 to 0.00240 (energy); prediction improvement must be checked separately.
+
+After that check, `--causal-only` trains only the two causal loss treatments.
+This avoids repeating the unchanged grid decoder training; original saved
+baselines remain in the comparison. Compare against the earlier uniform run
+with identical source data, seeds and budgets.
+
+```bash
+python -m dmft_data.ed_objective \
+  --study reports/local/aim_properties_20261127_144210 \
+  --output reports/local/causal_low_frequency \
+  --decoder-comparison --causal-only --pole-spacing low-frequency
+```
+
+### What remains to close Track B
+
+The current milestone is a controlled Matsubara/occupation go/no-go assessment,
+not demonstration of a universal DMFT surrogate. Finish it in a bounded sequence:
+
+1. Resolve the observed representation issue with the prescribed grid alternative;
+   retain a simple baseline, an unconstrained candidate and one causal candidate.
+   Compare Sigma, low-frequency G, occupation and sign violations together. Do not
+   demand that causality improve every metric or search indefinitely for a winner.
+2. Fix the model/selection rule and optimization budget. Check a small declared
+   set of initialization seeds for those finalists only. Keep budget termination
+   distinct from convergence; random seeds are not independent physical states.
+3. Evaluate frozen predictors on an unseen epsilon set within the same U, beta
+   and bath family, with no fitting/scaling updates. If those results inform new
+   choices, label them development data and preserve another final set. The
+   uninspected scale-1.15 split remains usable for the narrower matched-epsilon
+   bath-transfer claim. These frozen property evaluations are still to be added;
+   the older fixed-bath external-test utility is not a general bath-study evaluator.
+4. Write the go/no-go result including capacity, budget, initialization variability
+   and coverage limits. Lack of advantage over Ridge/PCA is a valid conclusion.
+
+For the broader original Track B spectral objective, one further stage remains:
+compare predicted impurity spectra against ED with the same broadening and energy
+window, including spectral weight/occupation and high-frequency moments. Analytic
+causality alone does not establish those properties; bulk Fermi-liquid constraints
+should not be imposed indiscriminately on a finite bath. Completing the Matsubara
+milestone does not complete spectral validation. Lattice self-consistency, crystal
+DOS and real-material generalization are outside this controlled Track B closure.
+Learnable pole locations, more bath sites and broad U/beta sweeps are follow-up
+options, not prerequisites for finishing the stated milestone.
+
 ### Matched Sigma-only versus Sigma+G refinement
 
 Reuse the completed integrated study; no new ED data or baseline training is
