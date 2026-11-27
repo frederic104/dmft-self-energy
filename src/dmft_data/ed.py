@@ -184,6 +184,7 @@ def generate_small_dataset(
     fixed_u: float | None = None,
     fixed_bath: tuple[float, float, float, float] | None = None,
     bath_scales: tuple[float, ...] | None = None,
+    bath_axis: str = "coupling",
 ) -> dict[str, object]:
     """Generate AIM states; with bath_scales, samples is the count per scale.
 
@@ -192,6 +193,8 @@ def generate_small_dataset(
     """
     if samples < 1:
         raise ValueError("samples must be at least one")
+    if bath_axis not in {"coupling", "energy"} or (bath_axis == "energy" and bath_scales is None):
+        raise ValueError("bath_axis must be coupling or energy; energy requires bath_scales")
     if fixed_u is not None and not np.isfinite(fixed_u):
         raise ValueError("fixed_u must be finite")
     if fixed_bath is not None and (len(fixed_bath) != 4 or not np.isfinite(fixed_bath).all()):
@@ -203,6 +206,8 @@ def generate_small_dataset(
                 or min(bath_scales) <= 0 or len(set(bath_scales)) != len(bath_scales)
                 or not np.any(np.asarray(fixed_bath[2:]) != 0)):
             raise ValueError("bath_scales must be unique positive finite values with a nonzero base coupling")
+        if bath_axis == "energy" and not any(e != 0 and v != 0 for e, v in zip(fixed_bath[:2], fixed_bath[2:])):
+            raise ValueError("Energy scaling requires a nonzero coupled bath energy")
     output = Path(output)
     if output.suffix != ".npz":
         raise ValueError("output must have a .npz extension")
@@ -211,7 +216,7 @@ def generate_small_dataset(
     output.parent.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(seed)
     omega = matsubara_frequencies(beta, frequency_count)
-    parameters, greens, g0s, sigmas = [], [], [], []
+    parameters, greens, g0s, sigmas, occupations = [], [], [], [], []
     levels = rng.uniform(-1.0, 0.2, samples) if bath_scales is not None else None
     n_scales = len(bath_scales) if bath_scales is not None else 1
     for index in range(samples * n_scales):
@@ -222,7 +227,9 @@ def generate_small_dataset(
         )
         if bath_scales is not None:
             scale = bath_scales[index % n_scales]
-            bath = (*fixed_bath[:2], *(scale * v for v in fixed_bath[2:]))
+            bath = ((*fixed_bath[:2], *(scale * v for v in fixed_bath[2:]))
+                    if bath_axis == "coupling" else
+                    (*(scale * e for e in fixed_bath[:2]), *fixed_bath[2:]))
         params = AIMParameters(
             epsilon_d=epsilon_d,
             interaction_u=interaction_u,
@@ -246,6 +253,7 @@ def generate_small_dataset(
         greens.append(green)
         g0s.append(g0)
         sigmas.append(1.0 / g0 - 1.0 / green)
+        occupations.append(impurity_occupancy(result))
     metadata = {
         "model": "finite_bath_AIM_1_impurity_2_bath_spinful",
         "samples": len(parameters),
@@ -259,16 +267,18 @@ def generate_small_dataset(
         "numpy_version": np.__version__,
         "convention": "K=H-mu*N; Sigma=G0^-1-G_imp^-1; spin_averaged",
         "limitation": "Impurity ED reference; not lattice DMFT or lattice DOS.",
+        "occupancy_convention": "exact thermal impurity occupancy per spin; spin symmetric",
     }
     extra = {}
     if bath_scales is not None:
         metadata.update(base_bath=fixed_bath, bath_scales=list(bath_scales),
-                        samples_per_bath=samples,
-                        bath_design="paired epsilon_d across scales; V_l=s*V_l_base; fixed bath energies")
+                        samples_per_bath=samples, bath_axis=bath_axis,
+                        bath_design="paired epsilon_d; scale couplings or energies according to bath_axis")
         # These are actual generated ranges, not the generic random-bath defaults.
         metadata["sampling_ranges"].update(
             U=[fixed_u, fixed_u],
-            bath_energy=[min(fixed_bath[:2]), max(fixed_bath[:2])],
+            bath_energy=[float(np.min(np.asarray(parameters)[:, 2:4])),
+                         float(np.max(np.asarray(parameters)[:, 2:4]))],
             hybridization=[float(np.min(np.asarray(parameters)[:, 4:6])),
                            float(np.max(np.asarray(parameters)[:, 4:6]))],
         )
@@ -280,6 +290,7 @@ def generate_small_dataset(
         green=np.asarray(greens),
         g0=np.asarray(g0s),
         sigma=np.asarray(sigmas),
+        occupancy_per_spin=np.asarray(occupations),
         metadata=np.asarray(json.dumps(metadata)),
         parameter_columns=np.asarray(
             [
@@ -308,7 +319,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--fixed-u", type=float, help="Fix U instead of sampling it")
     parser.add_argument("--fixed-bath", type=float, nargs=4, metavar=("E0", "E1", "V0", "V1"))
     parser.add_argument("--bath-scales", type=float, nargs="+",
-                        help="Scale fixed-bath couplings; samples is the number of paired epsilon values per scale")
+                        help="Scale the chosen bath axis; samples is the paired epsilon count per scale")
+    parser.add_argument("--bath-axis", choices=("coupling", "energy"), default="coupling")
     parser.add_argument("--overwrite", action="store_true")
     args = parser.parse_args(argv)
     metadata = generate_small_dataset(
@@ -321,6 +333,7 @@ def main(argv: list[str] | None = None) -> None:
         fixed_u=args.fixed_u,
         fixed_bath=tuple(args.fixed_bath) if args.fixed_bath is not None else None,
         bath_scales=tuple(args.bath_scales) if args.bath_scales is not None else None,
+        bath_axis=args.bath_axis,
     )
     print(json.dumps(metadata, indent=2))
 

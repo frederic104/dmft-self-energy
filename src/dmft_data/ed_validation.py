@@ -8,14 +8,15 @@ import json
 from pathlib import Path
 
 import joblib
-import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.figure import Figure
 
+from .ed_properties import compare_properties
 from .learning.models import EpsilonLinear, decode, encode
 from .provenance import sha256_file
 
 
-def analyze(dataset: Path, result: Path, output: Path) -> dict:
+def analyze(dataset: Path, result: Path, output: Path, properties: bool = False) -> dict:
     """Compare saved models on validation states, without fitting or scoring test."""
     dataset, result, output = map(Path, (dataset, result, output))
     if output.exists():
@@ -37,9 +38,17 @@ def analyze(dataset: Path, result: Path, output: Path) -> dict:
         omega = data["omega"].copy()
         params = data["parameters"][indices].copy()
         g0, reference = data["g0"][indices].copy(), data["sigma"][indices].copy()
+        if properties:
+            if "occupancy_per_spin" not in data:
+                raise ValueError("Property analysis needs a new dataset with ED occupancy_per_spin")
+            reference_green = data["green"][indices].copy()
+            occupancy = data["occupancy_per_spin"][indices].copy()
+            if len(omega) < 16 or not np.all(params[:, 7] == params[0, 7]):
+                raise ValueError("Property analysis requires fixed beta and at least 16 frequencies")
     if not len(indices) or not np.isfinite(reference).all():
         raise ValueError("Invalid validation states")
     rows, curves, summary = [], {}, {}
+    property_metrics, property_arrays = {}, {}
     for name, model in models.items():
         if (name == "epsilon_linear") != isinstance(model, EpsilonLinear):
             raise ValueError("Candidate type does not match name")
@@ -55,6 +64,14 @@ def analyze(dataset: Path, result: Path, output: Path) -> dict:
         summary[name] = float(np.sqrt(np.mean(np.abs(error) ** 2)))
         if not np.isclose(summary[name], metrics["validation_complex_rmse"][name], rtol=1e-8, atol=1e-12):
             raise ValueError(f"Stored validation score does not match model: {name}")
+        if properties:
+            try:
+                property_metrics[name], arrays = compare_properties(
+                    g0, prediction, reference_green, occupancy, omega, float(params[0, 7]))
+                property_arrays.update({f"{name}_{key}": value for key, value in arrays.items()})
+            except ValueError as exc:
+                property_metrics[name] = {"status": "failed", "reason": str(exc)}
+            property_arrays[f"{name}_sigma"] = prediction
         for i, w in enumerate(omega):
             rows.append((name, i, float(w), float(complex_rmse[i]), float(real_rmse[i]),
                          float(imag_rmse[i]), float(np.mean(error.real[:, i])),
@@ -65,19 +82,25 @@ def analyze(dataset: Path, result: Path, output: Path) -> dict:
         writer.writerow(("candidate", "frequency_index", "omega", "complex_rmse", "real_rmse",
                          "imag_rmse", "mean_signed_real_error", "mean_signed_imag_error"))
         writer.writerows(rows)
-    fig, ax = plt.subplots(figsize=(8, 5), constrained_layout=True)
+    fig = Figure(figsize=(8, 5), layout="constrained")
+    ax = fig.subplots()
     for name, curve in curves.items():
         ax.plot(omega, curve, label=name)
     ax.set(xscale="log", xlabel="Matsubara frequency", ylabel="Complex RMSE",
            title="Validation states: frequency-resolved error")
     ax.legend(fontsize="x-small", ncol=2)
     fig.savefig(output / "frequency_errors.png", dpi=150)
-    plt.close(fig)
     report = {"phase": "validation_only", "validation_count": len(indices),
               "split_rule": metrics["split_rule"], "dataset_sha256": metrics["dataset_sha256"],
               "candidate_bundle_sha256": metrics["candidate_bundle_sha256"],
               "complex_rmse": summary,
-              "note": "epsilon_linear uses epsilon_d; other candidates use G0 (and U if enabled)."}
+              "note": "epsilon_linear, when enabled, uses epsilon_d; other candidates use G0 (and U if enabled)."}
+    if properties:
+        report["properties"] = property_metrics
+        report["property_convention"] = "Per-spin impurity occupancy; fitted Matsubara tail; not lattice DOS or a spectrum."
+        np.savez_compressed(output / "validation_properties.npz", indices=indices,
+                            parameters=params, omega=omega, reference_green=reference_green,
+                            reference_occupancy_per_spin=occupancy, **property_arrays)
     (output / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
 
@@ -86,8 +109,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("dataset", "result", "output"):
         parser.add_argument(f"--{name}", type=Path, required=True)
+    parser.add_argument("--properties", action="store_true")
     args = parser.parse_args()
-    print(json.dumps(analyze(args.dataset, args.result, args.output), indent=2))
+    print(json.dumps(analyze(args.dataset, args.result, args.output, args.properties), indent=2))
 
 
 if __name__ == "__main__":
