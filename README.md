@@ -48,7 +48,8 @@ Track B separately provides a controlled finite-bath Anderson impurity reference
 ### Working research direction
 
 The immediate question is whether a compact self-energy representation preserves
-prediction quality as the impurity environment changes. The fixed-bath experiments
+Green functions and impurity properties as the environment changes, alongside
+self-energy accuracy. The fixed-bath experiments
 are controls, not the final task: epsilon-only interpolation has privileged
 parameter access, and a one-parameter family does not establish broad latent
 structure. Use full-target Ridge to distinguish the effect of target compression
@@ -57,18 +58,21 @@ nonlinear bottleneck under the same G0 inputs. Low-frequency error and physical
 consistency accompany total Matsubara RMSE. Do not assume a smaller bottleneck
 means a smaller model or faster inference.
 
-Our next controlled experiment changes bath coupling strength with matched
-epsilon_d values. The physical unit is an AIM parameter tuple; all states at a
+The integrated study changes bath coupling strength and bath energies in two
+separate experiments with matched epsilon_d values. The physical unit is an AIM
+parameter tuple; all states at a
 held-out bath scale stay together. Shared epsilon values are intentional controls,
 not independent draws across baths. This measures transfer across coupling
-strength at familiar epsilon values, not generalization to arbitrary bath shapes,
+or energy scales at familiar epsilon values, not generalization to arbitrary bath shapes,
 temperatures or materials. A useful outcome is compressed prediction comparable
-to full-target Ridge. If both fail in the low-frequency region, investigate the
-representation or coefficient mapping before increasing model complexity.
+to full-target Ridge in Sigma, reconstructed G and impurity occupation. If good
+Sigma RMSE coexists with poor property predictions, investigate low-frequency
+error propagation and the training objective before increasing model complexity.
 
-Subsequent steps depend on that result: vary bath energies or U with identifiable
-inputs; compare a causal decoder to the unconstrained baseline for accuracy and
-physical consistency; then assess impurity spectra against ED. These are proposed
+Subsequent steps depend on that result: compare a Green-function-aware training
+objective to the current self-energy objective; vary U with identifiable inputs;
+compare a causal decoder to the unconstrained baseline; then assess impurity
+spectra against ED. These are proposed
 experiments, not demonstrated contributions. AIM representation learning is already
 studied by [Arsenault et al.](https://doi.org/10.1103/PhysRevB.90.155136), and the
 DFT-derived G0-to-self-energy task is established by
@@ -125,6 +129,65 @@ pip install -e ".[dev]"
 For baseline experiments, install `pip install -e ".[dev,ml]"`.
 
 ## Track B: finite-bath AIM reference
+
+### Integrated representation-to-property workflow
+
+One command now runs data generation, the existing candidate comparison, and
+property reconstruction. It uses coupling scaling and energy scaling as two
+separate cases: V_l=s V_l_base or epsilon_l=s epsilon_l_base, respectively. The
+other bath parameters remain fixed. These are not a joint two-axis grid or
+arbitrary bath shapes. U, beta and mu stay fixed, and paired epsilon_d values
+control the comparison across bath scales. Default model seed is 31; specify
+`--model-seeds 31 32 33` only when optimizer variation is the question.
+
+```bash
+conda activate physai
+export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 MPLBACKEND=Agg
+python -m dmft_data.ed_workflow --output reports/local/aim_properties_v1
+```
+
+The output contains `recipe.json` (configuration and source hashes), one dataset
+per axis, fitted models and splits, frequency plots, per-state validation property
+arrays, and a combined `comparison.csv` / `summary.json`. Existing paths are never
+overwritten. A failed later stage leaves earlier artifacts available. The workflow
+always uses validation-only runs; the test scale remains reserved. All candidate
+scores are retained. The selected model is still chosen by Sigma validation RMSE;
+property columns are diagnostics and do not silently redefine selection.
+
+New ED datasets store exact thermal `occupancy_per_spin`, computed directly from
+the eigensystem. Predictions use G0 and predicted Sigma only:
+
+```text
+G_pred(iw) = [G0(iw)^(-1) - Sigma_pred(iw)]^(-1)
+n_per_spin = 1/2 + (2/beta) sum_{n>=0} Re G(iw_n)
+```
+
+The density sum has an infinite-frequency tail. `ed_properties.py` reports the
+finite sum and an approximation fitting Re G=-m1/w^2+m3/w^4 on the last 8-16
+points and analytically summing those two missing terms. No true occupancy or
+true moments enter that estimate. Error against the exact ED occupation is
+reported for both predicted and reference G, so reference truncation/fit error
+is visible separately from model propagation error. Reference accuracy does not
+guarantee a learned tail is accurate; fitted-tail density is an approximation,
+and out-of-range values are reported without clipping. All occupations are per
+spin (total occupancy is twice this value). This follows the need to handle
+tails in [Matsubara density calculations](https://triqs.github.io/triqs/4.0.x/doxygen/group__triqs-gfs-density.html),
+but is a small independent NumPy implementation, not the TRIQS density algorithm.
+
+For an existing candidate bundle from a new dataset, use
+`python -m dmft_data.ed_validation --dataset DATA.npz --result RUN --output ANALYSIS --properties`.
+Older datasets without ED occupations retain frequency-only analysis. The scalar
+Dyson and occupation functions can also be used directly for new predictions;
+the exact ED values are needed only for evaluation.
+
+This is the first property stage, not spectral continuation. Predicted Matsubara
+values cannot simply be substituted at real frequencies. Impurity spectral
+prediction needs a justified real-frequency representation/continuation and an
+ED reference. Lattice DOS/bands additionally need a lattice Hamiltonian, orbital
+embedding/projectors, chemical potential and double-counting conventions, then
+a lattice Dyson calculation. The AIM G0 here is a known finite-bath impurity
+input, not a verified Track A DFT input or a self-consistent DMFT Weiss function.
+No unimplemented spectral or lattice calculation is presented as a result.
 
 `dmft_data.ed` diagonalizes a spinful impurity and two spin-degenerate bath
 sites in the 64-state Fock space. With orbital order

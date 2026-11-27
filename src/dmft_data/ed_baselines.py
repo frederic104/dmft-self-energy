@@ -79,6 +79,7 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
             "parameters", "g0", "sigma", "omega"
         ))
         bath_scale = data["bath_scale"].copy() if "bath_scale" in data else None
+        bath_axis = json.loads(str(data["metadata"])).get("bath_axis", "coupling") if "metadata" in data else "coupling"
     expected = ["epsilon_d", "interaction_u", "epsilon_b0", "epsilon_b1", "V_b0",
                 "V_b1", "chemical_potential", "beta"]
     if columns != expected or params.ndim != 2 or params.shape[1] != 8 or not len(params):
@@ -108,11 +109,14 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
         if (validation_bath_scale not in bath_scale or test_bath_scale not in bath_scale
                 or validation_bath_scale == test_bath_scale or len(np.unique(bath_scale)) < 3):
             raise ValueError("Specify distinct observed validation/test bath scales and leave training scales")
-        base_couplings = params[:, 4:6] / bath_scale[:, None]
-        if (not np.all(params[:, 2:4] == params[0, 2:4])
-                or not np.allclose(base_couplings, base_couplings[0], rtol=1e-12, atol=1e-14)
-                or not np.any(base_couplings[0] != 0)):
-            raise ValueError("bath_scale labels do not describe a common bath with scaled couplings")
+        if bath_axis not in {"coupling", "energy"}:
+            raise ValueError("Unknown bath_axis")
+        varying, fixed = (slice(4, 6), slice(2, 4)) if bath_axis == "coupling" else (slice(2, 4), slice(4, 6))
+        base_values = params[:, varying] / bath_scale[:, None]
+        if (not np.all(params[:, fixed] == params[0, fixed])
+                or not np.allclose(base_values, base_values[0], rtol=1e-12, atol=1e-14)
+                or not np.any(base_values[0] != 0)):
+            raise ValueError("bath_scale labels do not describe a common bath with the chosen scaled axis")
         epsilon_groups = [np.sort(params[bath_scale == s, 0]) for s in np.unique(bath_scale)]
         if any(not np.array_equal(values, epsilon_groups[0]) for values in epsilon_groups[1:]):
             raise ValueError("Controlled bath split requires matched epsilon_d values across scales")
@@ -151,7 +155,7 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
         rule = ("U: validation [1.5,2); test [2,2.5); train remainder" if split == "u"
                 else "epsilon_d: validation < -0.6; train [-0.6,-0.2); test >= -0.2")
         if split == "bath":
-            rule = (f"bath scale: validation {validation_bath_scale}; test {test_bath_scale}; "
+            rule = (f"bath {bath_axis} scale: validation {validation_bath_scale}; test {test_bath_scale}; "
                     "train remaining scales; epsilon_d shared across baths")
     x, y = encode(g0), encode(sigma)
     if split == "u":
@@ -241,6 +245,7 @@ def run(dataset: Path, output: Path, seed: int = 0, split: str = "epsilon",
     if split == "bath":
         train_scales = np.unique(bath_scale[splits["train"]])
         metrics["bath_holdout"] = {
+            "axis": bath_axis,
             "scales_by_split": {role: np.unique(bath_scale[idx]).tolist() for role, idx in splits.items()},
             "validation_within_training_scale_range": bool(train_scales.min() < validation_bath_scale < train_scales.max()),
             "unit": "AIM state; bath scale held out as a group",
