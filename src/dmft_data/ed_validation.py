@@ -16,11 +16,9 @@ from .learning.models import EpsilonLinear, decode, encode
 from .provenance import sha256_file
 
 
-def analyze(dataset: Path, result: Path, output: Path, properties: bool = False) -> dict:
-    """Compare saved models on validation states, without fitting or scoring test."""
-    dataset, result, output = map(Path, (dataset, result, output))
-    if output.exists():
-        raise FileExistsError(output)
+def load_candidates(dataset: Path, result: Path) -> tuple[dict, dict]:
+    """Read a trusted local validation bundle after checking recorded hashes."""
+    dataset, result = map(Path, (dataset, result))
     metrics_path, bundle = result / "metrics.json", result / "candidates.joblib"
     metrics = json.loads(metrics_path.read_text())
     if metrics["evaluation_phase"] != "validation_only":
@@ -33,6 +31,15 @@ def analyze(dataset: Path, result: Path, output: Path, properties: bool = False)
     models = joblib.load(bundle)
     if not isinstance(models, dict) or list(models) != metrics["saved_candidates"]:
         raise ValueError("Candidate names do not match validation run")
+    return metrics, models
+
+
+def analyze(dataset: Path, result: Path, output: Path, properties: bool = False) -> dict:
+    """Compare saved models on validation states, without fitting or scoring test."""
+    dataset, result, output = map(Path, (dataset, result, output))
+    if output.exists():
+        raise FileExistsError(output)
+    metrics, models = load_candidates(dataset, result)
     with np.load(dataset, allow_pickle=False) as data:
         indices = np.asarray(metrics["splits"]["validation"], dtype=int)
         omega = data["omega"].copy()
