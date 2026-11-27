@@ -292,8 +292,8 @@ not demonstration of a universal DMFT surrogate. Finish it in a bounded sequence
    and bath family, with no fitting/scaling updates. If those results inform new
    choices, label them development data and preserve another final set. The
    uninspected scale-1.15 split remains usable for the narrower matched-epsilon
-   bath-transfer claim. These frozen property evaluations are still to be added;
-   the older fixed-bath external-test utility is not a general bath-study evaluator.
+   bath-transfer claim. Frozen unseen-epsilon evaluation is now available below;
+   the older fixed-bath external-test utility remains a separate fixed-bath tool.
 4. Write the go/no-go result including capacity, budget, initialization variability
    and coverage limits. Lack of advantage over Ridge/PCA is a valid conclusion.
 
@@ -306,6 +306,56 @@ milestone does not complete spectral validation. Lattice self-consistency, cryst
 DOS and real-material generalization are outside this controlled Track B closure.
 Learnable pole locations, more bath sites and broad U/beta sweeps are follow-up
 options, not prerequisites for finishing the stated milestone.
+
+### Freeze the panel and stop adaptive candidate expansion
+
+`ed_frozen` fixes three candidates from the original **uniform** decoder comparison:
+PCA8+Ridge (baseline), reset latent8 grid with Sigma+G (unconstrained hypothesis),
+and reset latent8 uniform-pole Sigma-only (causal control). This is a declared
+development-informed panel, not three winners selected separately for each axis.
+Low-frequency-pole runs remain representation ablations; they do not replace the
+control automatically. No new composite loss, pole search or architecture is added.
+
+Training policy is fixed at PCA8/Ridge alpha=1 and the existing reset latent8
+procedure with L-BFGS-B max_iter=100, alpha=.001, G weight 1 or 0 respectively.
+Budget-limited termination is preserved. PCA is an external baseline, not an
+equal-parameter neural architecture. Freeze copies existing fitted models and
+their scalers; it does not train anything. Available initialization seeds are
+recorded from the source study. A seed-31-only source stays a single-seed result;
+optimizer variability is not claimed resolved. If adding seeds later, declare
+them and prepare the same finalists before inspecting the new evaluation.
+
+```bash
+python -m dmft_data.ed_frozen freeze \
+  --study reports/local/aim_properties_20261127_144210 \
+  --result reports/local/decoder_comparison_20261127_200055 \
+  --output reports/local/frozen_panel_v1
+python -m dmft_data.ed_frozen evaluate \
+  --panel reports/local/frozen_panel_v1 --output reports/local/frozen_epsilon_v1
+```
+
+`protocol.json` fixes the candidates, source/checkpoint hashes, budget metadata,
+evaluation seed (default 441), sample count (40), U, beta, mesh and bath scale
+before evaluation. Evaluation creates one new dataset per axis at the original
+validation scale (0.85), reusing that dataset across model seeds. It samples new
+epsilon values from the same [-1,.2] range and rejects overlap with all original
+epsilon values. It reports coverage relative to observed training extrema; a
+few draws may lie outside those extrema despite sharing the generating range.
+The reserved scale 1.15 is not opened. Evaluation checks the frozen bundle hash,
+uses predict only, and saves all three models' scores and per-state predictions.
+Original runs and frozen checkpoints are not overwritten. `--evaluation-seed`
+and `--samples` are freeze-time options, not post-score tuning parameters.
+
+Read Sigma RMSE, first-eight G RMSE and fitted-tail occupation RMSE together.
+`dominates_pca8` means no worse on all three and strictly better on at least one;
+it is a descriptive Pareto flag, not statistical significance or an automatic
+model-selection rule. Failures remain in the table. No single winner or changed
+hyperparameter is selected from these new scores. Once used to change a model,
+the evaluation becomes development evidence, requiring another untouched final
+set for a final claim. Repeated runs of the same seed are the same physical data,
+not independent confirmations. This closes the no-refitting evaluation path;
+multi-seed evidence, final scientific assessment and ED spectral comparison
+remain distinct outstanding work.
 
 ### Matched Sigma-only versus Sigma+G refinement
 
