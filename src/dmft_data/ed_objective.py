@@ -23,7 +23,8 @@ from .provenance import sha256_file
 def run_comparison(study: Path, output: Path, *, candidates=("mlp", "latent_mlp_8"),
                    green_weight: float = 1., max_iter: int = 100,
                    decoder_comparison: bool = False, pole_count: int = 16,
-                   pole_bound: float = 4.) -> dict:
+                   pole_bound: float = 4., pole_spacing: str = "uniform",
+                   representation_only: bool = False, causal_only: bool = False) -> dict:
     """Refine independent copies of saved models; never train on held-out targets.
 
     Unmodified candidates remain in the comparison. Each new pair shares the
@@ -31,6 +32,8 @@ def run_comparison(study: Path, output: Path, *, candidates=("mlp", "latent_mlp_
     caps. Only the G-loss weight differs. Actual optimizer termination is saved.
     """
     study, output = Path(study), Path(output)
+    if (representation_only or causal_only) and not decoder_comparison:
+        raise ValueError("Representation-only and causal-only require decoder comparison")
     if output.exists():
         raise FileExistsError(output)
     if (not candidates or len(set(candidates)) != len(candidates)
@@ -46,10 +49,14 @@ def run_comparison(study: Path, output: Path, *, candidates=("mlp", "latent_mlp_
               "green_weight": green_weight, "max_iter": max_iter,
               "decoder_comparison": decoder_comparison,
               "pole_count": pole_count, "pole_bound": pole_bound,
+              "pole_spacing": pole_spacing, "representation_only": representation_only,
+              "causal_only": causal_only,
               "selection": "Sigma validation RMSE only; assess paired changes in G and occupation separately",
               "source_recipe": original, "python": platform.python_version(),
               "numpy": np.__version__, "scipy": scipy.__version__, "sklearn": sklearn.__version__}
     source = Path(__file__).parent
+    if representation_only:
+        recipe["evaluation_phase"] = "training_representation_only"
     recipe["source_sha256"] = {name: sha256_file(source / name) for name in (
         "ed_objective.py", "learning/dyson_objective.py", "learning/causal_decoder.py", "learning/models.py",
         "ed_validation.py", "ed_properties.py")}
@@ -72,13 +79,31 @@ def run_comparison(study: Path, output: Path, *, candidates=("mlp", "latent_mlp_
             with np.load(dataset, allow_pickle=False) as data:
                 # Only train targets enter refinement; test arrays are never scored.
                 g0, sigma, green = (data[k][train].copy() for k in ("g0", "sigma", "green"))
-                val_g0, val_sigma = (data[k][validation].copy() for k in ("g0", "sigma"))
+                if not representation_only:
+                    val_g0, val_sigma = (data[k][validation].copy() for k in ("g0", "sigma"))
                 omega = data["omega"].copy()
             starts = {name: models[name] for name in candidates}
             if decoder_comparison:
                 starts, metrics["decoder_design"] = decoder_starts(
                     models["latent_mlp_8"], sigma, omega, seed=seed,
-                    pole_count=pole_count, pole_bound=pole_bound)
+                    pole_count=pole_count, pole_bound=pole_bound, pole_spacing=pole_spacing)
+                if representation_only:
+                    design = metrics["decoder_design"]
+                    result = output / axis / f"seed_{seed}"
+                    result.mkdir(parents=True)
+                    report = {"phase": "training_representation_only", "training_indices": train,
+                              "dataset_sha256": metrics["dataset_sha256"],
+                              "source_candidate_bundle_sha256": metrics["candidate_bundle_sha256"],
+                              "decoder_design": design}
+                    (result / "representation.json").write_text(json.dumps(report, indent=2) + "\n")
+                    rows.append({"axis": axis, "model_seed": seed, "pole_spacing": pole_spacing,
+                                 **{k: design[k] for k in (
+                                     "training_representation_rmse", "training_standardized_mse",
+                                     "training_first_frequency_error_share", "training_first_8_error_share",
+                                     "representation_fit_success")}})
+                    continue
+                if causal_only:
+                    starts = {"causal_latent_8": starts["causal_latent_8"]}
             fit_info = {}
             for name, start in starts.items():
                 for treatment, weight in (("sigma", 0.), ("sigma_g", green_weight)):
@@ -143,9 +168,16 @@ def run_comparison(study: Path, output: Path, *, candidates=("mlp", "latent_mlp_
                 writer.writeheader()
                 writer.writerows(rows)
             (output / "failures.json").write_text(json.dumps(failures, indent=2) + "\n")
+    if representation_only:
+        with (output / "comparison.csv").open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
     summary = {"recipe": recipe, "comparisons": rows, "failures": failures,
                "interpretation": ("Reset latent-8 grid/causal decoder x loss comparison." if decoder_comparison
                                   else "Matched checkpoint refinement.") + " Validation only; test unscored."}
+    if representation_only:
+        summary["interpretation"] = "Training-only representation fits; no neural training or held-out evaluation."
     (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return summary
 
@@ -161,11 +193,16 @@ def main():
                         help="Reset latent-8 networks and compare grid/causal heads under both losses")
     parser.add_argument("--pole-count", type=int, default=16)
     parser.add_argument("--pole-bound", type=float, default=4.)
+    parser.add_argument("--pole-spacing", choices=("uniform", "low-frequency"), default="uniform")
+    parser.add_argument("--representation-only", action="store_true")
+    parser.add_argument("--causal-only", action="store_true")
     args = parser.parse_args()
     run_comparison(args.study, args.output, candidates=tuple(args.candidates),
                    green_weight=args.green_weight, max_iter=args.max_iter,
                    decoder_comparison=args.decoder_comparison,
-                   pole_count=args.pole_count, pole_bound=args.pole_bound)
+                   pole_count=args.pole_count, pole_bound=args.pole_bound,
+                   pole_spacing=args.pole_spacing, representation_only=args.representation_only,
+                   causal_only=args.causal_only)
     print(f"Saved {args.output / 'comparison.csv'}")
 
 
