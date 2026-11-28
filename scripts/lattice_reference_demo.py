@@ -23,17 +23,17 @@ def main():
     z = np.linspace(-4, 4, 801) + .08j
     # Chosen analytic causal self-energy, not inferred from Matsubara data.
     sigma = (.4 + .3 / (z - 1.5))[:, None, None]
-    convention = dict(basis="orthonormal", sigma_convention="impurity_before_dc",
-                      energy_axis="relative_to_mu", spin="one_explicit_block",
-                      energy_unit="model_units", interpretation="synthetic",
-                      domain="real_frequency")
+    convention = {"basis": "orthonormal", "sigma_convention": "impurity_before_dc",
+                  "energy_axis": "relative_to_mu", "spin": "one_explicit_block",
+                  "energy_unit": "model_units", "interpretation": "synthetic",
+                  "domain": "real_frequency"}
     for name in ("bz", "path", "noninteracting"):
         sampling = "path" if name == "path" else "bz"
         k = (np.linspace(0, np.pi, 121) if sampling == "path"
              else np.linspace(-np.pi, np.pi, 256, endpoint=False))
-        arrays = dict(hopping=(-2*np.cos(k))[:, None, None],
-                      projectors=np.ones((len(k), 1, 1)), z=z, mu=np.array(0.),
-                      sigma=sigma, dc=np.array([[.4]]))
+        arrays = {"hopping": (-2*np.cos(k))[:, None, None],
+                  "projectors": np.ones((len(k), 1, 1)), "z": z, "mu": np.array(0.),
+                  "sigma": sigma, "dc": np.array([[.4]])}
         if sampling == "path":
             arrays["k_distance"] = k
         else:

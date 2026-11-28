@@ -10,17 +10,17 @@ from dmft_data.lattice import bz_average, lattice_green, process, run
 
 
 def conventions():
-    return dict(basis="orthonormal", sigma_convention="impurity_before_dc",
-                energy_axis="relative_to_mu", spin="one_explicit_block",
-                energy_unit="model_units", interpretation="synthetic",
-                sampling="bz", domain="real_frequency")
+    return {"basis": "orthonormal", "sigma_convention": "impurity_before_dc",
+            "energy_axis": "relative_to_mu", "spin": "one_explicit_block",
+            "energy_unit": "model_units", "interpretation": "synthetic",
+            "sampling": "bz", "domain": "real_frequency"}
 
 
 def fixture():
     z = np.linspace(-4, 4, 401) + .1j
-    return dict(hopping=np.array([[[-1.]], [[1.]]]), projectors=np.ones((2, 1, 1)),
-                sigma=np.zeros((len(z), 1, 1), complex), dc=np.zeros((1, 1)),
-                z=z, mu=np.array(.2), weights=np.array([.3, .7]))
+    return {"hopping": np.array([[[-1.]], [[1.]]]), "projectors": np.ones((2, 1, 1)),
+            "sigma": np.zeros((len(z), 1, 1), complex), "dc": np.zeros((1, 1)),
+            "z": z, "mu": np.array(.2), "weights": np.array([.3, .7])}
 
 
 def test_noninteracting_dos_is_weighted_lorentzian_and_no_spin_factor():

@@ -114,7 +114,7 @@ def run(input_path: Path, config: Path, output: Path) -> dict:
         raise FileExistsError(output)
     conventions = yaml.safe_load(config.read_text(encoding="utf-8"))
     if not isinstance(conventions, dict):
-        raise ValueError("Expected convention mapping")
+        raise TypeError("Expected convention mapping")
     with np.load(input_path, allow_pickle=False) as saved:
         arrays = {k: saved[k] for k in saved.files}
     result = process(arrays, conventions)
