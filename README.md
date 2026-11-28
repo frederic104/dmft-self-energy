@@ -16,6 +16,16 @@ and works through reconstructed G, Sigma and occupation values. Track A target
 convergence remains a standing limitation; the nominated SVO file contains DFT
 and DC payloads, but their presence does not verify their physical alignment.
 
+[Property visualization](docs/property_visualization.md) shows how to compare
+one prepared material run to its existing exploratory model, and how to view
+saved ED impurity spectra. Training-group views are explicitly labeled and do
+not constitute an independent test or a material DOS/band reconstruction.
+
+For supplied scalar AIM self-energy predictions, the
+[reference-free property workflow](docs/aim_property_prediction.md) computes
+impurity G and per-spin occupation without requiring ED targets or retraining.
+It does not infer material conventions or predict a lattice DOS.
+
 Use [the report-only commands](docs/closeout_reproduction.md) to regenerate
 tables and all-state figures from saved results. Earlier training/evaluation
 commands below document the study's development; they are not instructions to

@@ -59,13 +59,15 @@ def finish(fig, axes, path: Path, caption: str) -> None:
     path.with_suffix(".caption.md").write_text(caption + "\n", encoding="utf-8")
 
 
-def prediction_figure(path, omega, predicted, reference, scale, unit, labels):
+def prediction_figure(path, omega, predicted, reference, scale, unit, labels, context=None):
     """Overview preserves each block; the companion resolves blocks separately."""
     native = "meV" if unit == "meV" else "native units"
     with figure_style() as plt:
         fig, axes = plt.subplots(
             2, 2, figsize=(7.1, 4.9), sharex=True, layout="constrained"
         )
+        if context:
+            fig.suptitle(context, fontsize=9)
         for b, label in enumerate(labels):
             for orbital in range(reference.shape[1]):
                 ref, pred = (
@@ -103,6 +105,8 @@ def prediction_figure(path, omega, predicted, reference, scale, unit, labels):
             f"Unit convention: {unit}. Blocks are not independent physical samples. "
             "No curve alignment or oracle offset removal is applied."
         )
+        if context:
+            caption += " " + context
         finish(fig, axes, path, caption)
         plt.close(fig)
         fig, axes = plt.subplots(
@@ -113,6 +117,8 @@ def prediction_figure(path, omega, predicted, reference, scale, unit, labels):
             sharex=True,
             layout="constrained",
         )
+        if context:
+            fig.suptitle(context, fontsize=9)
         for b, label in enumerate(labels):
             for row, component in enumerate((np.real, np.imag)):
                 ax = axes[b, row]
