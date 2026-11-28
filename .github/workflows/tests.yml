@@ -22,3 +22,5 @@ jobs:
           src/dmft_data/physics.py tests/test_physics.py
           src/dmft_data/iteration_analysis.py tests/test_iteration_analysis.py
           src/dmft_data/plotting.py src/dmft_data/validation_protocol.py
+          src/dmft_data/lattice.py tests/test_lattice.py
+          scripts/lattice_reference_demo.py
