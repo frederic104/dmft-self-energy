@@ -150,7 +150,7 @@ def build_physical_state_manifest(
         })
     result = {
         "schema_version": SCHEMA_VERSION,
-        "source_root": str(root),
+        "source_root": "<LOCAL_SOURCE_ROOT>",
         "record_count": len(records),
         "records": records,
         "limitations": [

@@ -18,6 +18,28 @@ def dyson_green(g0: np.ndarray, sigma: np.ndarray) -> np.ndarray:
     return green
 
 
+def dyson_errors(reference_sigma, predicted_sigma, reference_green, predicted_green):
+    """Post-hoc scalar errors at fixed G0; no fit or small-error assumption.
+
+    Exact: delta_G = G_pred G_ref delta_Sigma. Linear: G_ref**2 delta_Sigma.
+    |G_ref delta_Sigma| equals the pointwise relative linear remainder wherever
+    delta_G is nonzero, assuming the same G0 and consistent Dyson references.
+    The identity residual exposes violations of those assumptions.
+    """
+    arrays = (reference_sigma, predicted_sigma, reference_green, predicted_green)
+    if (reference_sigma.ndim != 2 or any(a.shape != reference_sigma.shape for a in arrays)
+            or not all(np.isfinite(a).all() for a in arrays)):
+        raise ValueError("Expected finite state-by-frequency arrays on a common mesh")
+    sigma = predicted_sigma - reference_sigma
+    green = predicted_green - reference_green
+    linear = reference_green**2 * sigma
+    return {"sigma_error": sigma, "green_error": green, "linear_green_error": linear,
+            "linear_remainder": green - linear,
+            "identity_residual": green - predicted_green * reference_green * sigma,
+            "expansion_parameter": np.abs(reference_green * sigma),
+            "exact_amplification": np.abs(reference_green * predicted_green)}
+
+
 def occupancy_estimates(green: np.ndarray, omega: np.ndarray, beta: float) -> tuple[np.ndarray, np.ndarray]:
     """Per-spin n = 1/2 + (2/beta) sum_{positive n} Re G(iw_n).
 

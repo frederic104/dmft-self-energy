@@ -58,7 +58,7 @@ def main() -> None:
     ]
     aggregate = {
         "status": "passed" if all(row["status"] == "success" for row in reports) else "failed",
-        "source": str(source),
+        "source": "<LOCAL_SOURCE_ROOT>" + ("/" + source.name if source.is_file() else ""),
         "files": reports,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

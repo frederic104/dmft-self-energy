@@ -7,6 +7,7 @@ import h5py
 import numpy as np
 
 from dmft_data.triqs_inspection import inspect_triqs_file
+from dmft_data.provenance import redact_source_root
 
 
 def test_triqs_iterations_metadata_and_stored_iterations_are_separate(
@@ -42,6 +43,8 @@ def test_triqs_iterations_metadata_and_stored_iterations_are_separate(
 
     assert report["status"] == "success"
     assert report["sha256"]
+    assert str(source_root) not in json.dumps(report)
+    assert report["source_path"].startswith("<LOCAL_SOURCE_ROOT>")
     assert report["iteration_evidence"] == [
         {
             "source_path": "/",
@@ -68,3 +71,14 @@ def test_report_is_json_serializable(tmp_path: Path) -> None:
     report = inspect_triqs_file(path, tmp_path)
 
     assert json.loads(json.dumps(report))["sha256"] == report["sha256"]
+
+
+def test_redaction_keeps_hdf5_paths_and_handles_slash_variants():
+    original = {"path": "C:/private/data/file.h5",
+                "nested": [{"error": r"failed C:\private\data\file.h5"}],
+                "hdf5_path": "/dmft_output/Sigma-1", "sha256": "unchanged"}
+    redacted = redact_source_root(original, r"C:\private\data")
+    assert "private" not in json.dumps(redacted)
+    assert redacted["hdf5_path"] == original["hdf5_path"]
+    assert redacted["sha256"] == "unchanged"
+    assert original["path"] == "C:/private/data/file.h5"

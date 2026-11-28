@@ -1,4 +1,61 @@
-# Source evidence and the next experiment
+# Source evidence and the minimum material-data contract
+
+## Closeout review: 2026-11-28
+
+Track A remains **exploratory**. The review below was checked again against the
+paper, public repository directory listings, preprocessing notebook and data
+README. No new raw-file audit or model training was performed. The earlier
+same-index experiment below is a historical optional development plan, not the
+next step authorized by the closed Track B study.
+
+The inspected upstream main commit was
+`5439bb85d6e2058393bc6b9d927a215b1294a324`.
+
+The public preprocessing notebook still has blob
+`2df768e8e706bee027114f495504003b84efc71d`; its `readfile` code cell
+`cc_0504b531` pairs same-index G0-i/Sigma-i, loops over 25 iterations and six
+channels, and selects from a constructed frequency window. This verifies the
+reader operation, not the generating assignment or solver/mixing stage.
+The inspected root and beta-variation directory listings contain ML notebooks,
+model code and processed datasets; they did not supply a DMFT producer or
+run-specific convergence logs. The
+[data README](https://github.com/hrishitbanerjee/Deep-DMFT/blob/main/data/README.md)
+calls Sigma_iw converged, but provides no criterion, history or run-level proof.
+It also labels CVO as CrVO3, whereas the paper describes CaVO3; that discrepancy
+must not silently determine a material identity.
+
+The paper's Methods distinguish VASP structural relaxation from WIEN2k input
+to the projective-Wannier/TRIQS DMFT calculation. These publication-level
+descriptions do not resolve the stored arrays. The Zenodo record and API could
+not be fetched in this review; neither archive contents nor unseen logs were
+treated as inspected. No authors were contacted.
+
+| Field | Evidence currently available | Required before a primary material claim |
+| --- | --- | --- |
+| G0-i | Reader path and same-index pairing verified; paper calls input DFT-derived | Producer assignment with code revision and solver/mixing stage; distinguish DFT local G0, Weiss and hybridization |
+| Final Sigma | Archive-final selection and previously reported storage equalities | Exact selected path/iteration, raw-file hash, convergence criterion and run-specific residual/log history; noise/measurement context |
+| U, J, beta | Paper gives an interaction family/range; filenames and local attributes are candidates | Per-state values, units, interaction tensor convention and exact stored mesh |
+| mu and double counting | Paper describes FLL; values/stage unknown | mu energy zero, DC matrix/value, whether Sigma includes DC, stage alignment |
+| Orbital/spin basis | Reader uses six t2g channel labels | Basis/order, rotations, symmetry assumptions, matrix dimensions and off-diagonal handling |
+| State identity | Iterations/channels/warmup are visible | Material/structure/parameter tuple, explicit physical_state_id, replica grouping; warmup is numerical, not a physical coordinate |
+| Lattice reconstruction | Not verified from these arrays | H(k), k weights, projectors/embedding, represented bands, overlap if needed, and compatible reference local spectrum/DOS |
+
+The minimum contract is a reviewed per-run record containing the existing
+relative source path and SHA-256, physical_state_id/replica group, exact input
+and target paths, quantity meanings and generating code reference, units/mesh,
+interaction/beta/mu/DC, basis/embedding conventions, and scoped target
+convergence evidence. Keep the existing review/registry formats from
+[learning_workflow.md](learning_workflow.md) and
+[research_audit.md](research_audit.md); do not create a competing audit system.
+Evidence can be shared across runs only where its applicability is explicit.
+
+The next action is to obtain the producer's G0/Sigma write assignments and a
+convergence record for one nominated run. Without these, keep existing data
+exploratory and stop verified-material prediction claims. After this contract
+is satisfied, first reconstruct existing reference G/occupation in the verified
+basis, then consider the lattice inputs above. Projected DFT G0 cannot generally
+replace an impurity Weiss function in a scalar Dyson reconstruction; see the
+[closeout's property definitions](track_b_closeout.md).
 
 Reviewed 2026-11-24. This note records shared source evidence once; it does not
 require another scan of all local HDF5 files. Publication statements, public
@@ -101,7 +158,7 @@ To create the comparison config on Ubuntu (does not read raw arrays or train):
 
 ```bash
 conda activate environment
-cd /home/user/projects/dmft-self-energy
+cd ~/projects/dmft-self-energy
 python - <<'PY'
 from pathlib import Path
 import yaml

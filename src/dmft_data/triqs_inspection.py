@@ -15,7 +15,7 @@ import h5py
 import numpy as np
 
 from .hdf import difference_metrics, read_complex_dataset
-from .provenance import sha256_file
+from .provenance import redact_source_root, sha256_file
 
 QUANTITIES = ("G", "G0", "Weiss", "hybridization", "Sigma", "spectral")
 
@@ -264,4 +264,5 @@ def inspect_triqs_file(file_path: str | Path, source_root: str | Path) -> dict[s
             "error": str(error),
         })
 
-    return report
+    # This JSON is shared for review; absolute source roots are not needed.
+    return redact_source_root(report, root.resolve())

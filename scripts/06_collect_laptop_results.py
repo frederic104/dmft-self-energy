@@ -21,30 +21,11 @@ import numpy as np
 from dmft_data.extraction import read_hdf5_file, software_versions
 from dmft_data.inventory import inspect_hdf5_file
 from dmft_data.provenance import sha256_file
+from dmft_data.provenance import redact_source_root as _redact_source_root
 from dmft_data.triqs_inspection import inspect_triqs_file
 from dmft_data.validation import validate_extraction
 
 LOGGER = logging.getLogger(__name__)
-
-
-def _redact_source_root(value: Any, source_root: Path) -> Any:
-    """Replace the local source-root prefix in JSON-safe report values.
-
-    This is deliberately narrow: HDF5-internal paths such as ``/dmft/Sigma``
-    are retained, while filesystem paths below the user-provided source root
-    are replaced with a stable placeholder.
-    """
-    root = str(source_root)
-    if isinstance(value, str):
-        return value.replace(root, "<LOCAL_SOURCE_ROOT>")
-    if isinstance(value, list):
-        return [_redact_source_root(item, source_root) for item in value]
-    if isinstance(value, dict):
-        return {
-            key: _redact_source_root(item, source_root)
-            for key, item in value.items()
-        }
-    return value
 
 
 def _component_statistics(values: np.ndarray) -> dict[str, Any]:

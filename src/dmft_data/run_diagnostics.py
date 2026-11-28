@@ -302,7 +302,7 @@ def classify_hdf5_runs(
     for row in rows:
         counts[row["run_status"]] = counts.get(row["run_status"], 0) + 1
     summary = {
-        "source_root": str(root),
+        "source_root": "<LOCAL_SOURCE_ROOT>",
         "file_count": len(rows),
         "run_status_counts": counts,
         "files_with_verified_mesh": sum(row["mesh_count"] > 0 for row in rows),
