@@ -62,6 +62,17 @@ evidence in [the validation protocol](physics_validation_protocol.md) address
 that question. Even an algebraic match alone cannot establish how the source
 quantity was generated or whether DMFT converged.
 
+There is also an identifiability condition on the learning problem: the same
+noninteracting AIM G0 can occur at different U and yield different Sigma.
+If a future study varies interactions, condition the predictor on U/J and the
+relevant temperature/mesh and subspace conventions, or explicitly restrict
+those quantities. G0 alone cannot define a universal impurity solver across
+unspecified interactions. The current fixed-U/fixed-beta experiment avoids
+this particular ambiguity. Transferring its numerical methods to a material
+pipeline is reasonable; transferring learned single-orbital finite-bath physics
+to a multi-orbital, Hund-coupled self-consistent lattice problem is a separate
+hypothesis that the present experiment has not tested.
+
 With the same verified bath, the exact resolvent identity is
 `Gpred - Gref = Gpred (Sigma_pred - Sigma_ref) Gref`.
 It explains why a small Sigma error can produce a large G error near a sensitive
