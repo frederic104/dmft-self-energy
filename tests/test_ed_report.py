@@ -8,8 +8,8 @@ import pytest
 from scipy.special import expit
 
 from dmft_data.ed import matsubara_frequencies
-from dmft_data.ed_properties import compare_properties, dyson_errors, dyson_green
-from dmft_data.ed_report import aggregate, report
+from dmft_data.ed_properties import compare_properties, dyson_errors, dyson_green, occupancy_estimates
+from dmft_data.ed_report import aggregate, counterfactual_properties, report
 from dmft_data.ed_spectra import spectrum_metrics
 from dmft_data.provenance import sha256_file
 
@@ -44,6 +44,27 @@ def test_seed_sd_is_population_and_failures_are_not_zero():
     assert result[0]["std"] == 1
     assert result[0]["count"] == 2 and result[0]["expected_rows"] == 3
     assert aggregate(rows[:1])[0]["std"] is None
+
+
+def test_counterfactual_decomposition_and_nonlinear_interaction():
+    beta = 20.
+    omega = matsubara_frequencies(beta, 64)
+    g0 = (1/(1j*omega-.2))[None, :]
+    sigma = np.zeros_like(g0)
+    reference_n = np.array([expit(-beta*.2)])
+    prediction = sigma + .05 + .03/(1j*omega-.7)
+    cases, offset, interaction_g, interaction_n = counterfactual_properties(
+        g0, sigma, prediction, g0, reference_n, omega, beta)
+    np.testing.assert_allclose(offset, (prediction-sigma).real.mean(axis=1))
+    _, ref_n = occupancy_estimates(g0, omega, beta)
+    full, mean, rest = (cases[k][1] for k in ("full", "real_offset_only", "residual_only"))
+    np.testing.assert_allclose(full["green"]-g0,
+                               mean["green"]-g0 + rest["green"]-g0 + interaction_g)
+    np.testing.assert_allclose(full["occupancy_tail"]-ref_n,
+                               mean["occupancy_tail"]-ref_n + rest["occupancy_tail"]-ref_n + interaction_n)
+    assert np.max(abs(interaction_g)) > 1e-5
+    with pytest.raises(AssertionError, match="Dyson consistency"):
+        counterfactual_properties(g0, sigma, prediction, g0+.1, reference_n, omega, beta)
 
 
 def saved_fixture(root):
@@ -99,6 +120,13 @@ def test_saved_report_all_states_no_models_and_missing_inputs(tmp_path, monkeypa
     assert len(rows) == 8
     assert len({r["state_id"] for r in rows}) == 2
     assert {r["source_index"] for r in rows} == {"3", "8"}
+    with (out/"counterfactual_metrics.csv").open() as handle:
+        cf = list(csv.DictReader(handle))
+    assert len(cf) == 12 and {r["case"] for r in cf} == {"full", "real_offset_only", "residual_only"}
+    assert all(r["status"] == "ok" and r["state_count"] == "2" for r in cf)
+    with (out/"counterfactual_states.csv").open() as handle:
+        cs = list(csv.DictReader(handle))
+    assert len(cs) == 24 and len({r["state_id"] for r in cs}) == 2
     for row in rows:
         r = {k: float(v) for k, v in row.items()
              if k.startswith(("occupancy_", "reference_", "predicted_"))}

@@ -46,6 +46,8 @@ Expected outputs:
 | paired_state_errors.csv | Same-state/same-seed squared-error differences relative to PCA8 |
 | frequency_errors.csv | Sigma/G/linearization errors, exact amplification and expansion parameter |
 | dyson_diagnostics.csv | Exact identity residual and relative linear remainder for every case |
+| counterfactual_metrics.csv | Per-axis/model/seed effects of full, real-offset-only and residual-only Sigma errors; explicit failures |
+| counterfactual_states.csv | The same post-hoc cases and nonlinear interaction for every physical state |
 | spectral_state_errors.csv | All-state spectral RMSE and integrated absolute error |
 | states_00.png through states_07.png | All-state plots for the full command above; spectral ECDFs included |
 | summary.json | Relative artifact labels/hashes, source hashes, versions, missing-input list and diagnostic summaries |
@@ -66,6 +68,11 @@ compares the two fitted corrections, not the full corrected occupations.
 `reference_occupancy_raw/tail` and `predicted_occupancy_raw/tail` are per spin;
 `omega_0` and the `*_iw0_real/imag` columns identify actual complex values.
 Do not add component RMSEs or pool seed rows as independent physical states.
+
+For the oracle counterfactual definitions, numerical results and interpretation,
+see [AIM error propagation](aim_error_propagation.md). These two additional CSVs
+are generated from the same existing arrays; reference Sigma and exact ED n are
+required. They are not usable corrections or new independent tests.
 
 Frozen evaluators already save all arrays needed here. No extra inference was
 needed for the available results. If a prediction NPZ is lost, restore it from
