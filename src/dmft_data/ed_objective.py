@@ -44,7 +44,7 @@ def run_comparison(study: Path, output: Path, *, candidates=("mlp", "latent_mlp_
         candidates = ("latent_mlp_8",)
     if original["evaluation_phase"] != "validation_only":
         raise ValueError("Expected a validation-only AIM study")
-    recipe = {"source_study": str(study.resolve()), "source_recipe_sha256": sha256_file(study / "recipe.json"),
+    recipe = {"source_study": study.name, "source_recipe_sha256": sha256_file(study / "recipe.json"),
               "evaluation_phase": "validation_only", "candidates": list(candidates),
               "green_weight": green_weight, "max_iter": max_iter,
               "decoder_comparison": decoder_comparison,

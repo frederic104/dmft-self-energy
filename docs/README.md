@@ -1,5 +1,10 @@
 # Documentation
 
+See [track_b_closeout.md](track_b_closeout.md) for the closed AIM study's
+verified saved-result tables, all-state Dyson analysis, limitations and next
+property step. [closeout_reproduction.md](closeout_reproduction.md) reproduces
+tables and figures without training or checkpoint inference.
+
 See [architecture.md](architecture.md) for the initial project layout and
 staged implementation boundary.
 

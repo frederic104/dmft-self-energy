@@ -1,6 +1,21 @@
 
 # DMFT Self-Energy
 
+## Current result: Track B candidate search is closed
+
+The [integrated closeout](docs/track_b_closeout.md) separates development,
+frozen unseen-epsilon, reserved-scale and impurity-spectral results. Existing
+Ubuntu frozen predictions were read and their metrics recomputed; no training
+or checkpoint inference was repeated. PCA8 remains the Sigma baseline, grid+G
+has conditional property benefits, and the present causal model does not justify
+adoption as the primary predictor. Track A semantics/convergence remain unresolved.
+
+Use [the report-only commands](docs/closeout_reproduction.md) to regenerate
+tables and all-state figures from saved results. Earlier training/evaluation
+commands below document the study's development; they are not instructions to
+reopen candidate search. Personal absolute source roots are excluded from the
+new shared reports and the committed TRIQS inspection report.
+
 ## Research Objective
 
 This project investigates physics-constrained latent
@@ -276,7 +291,11 @@ python -m dmft_data.ed_objective \
   --decoder-comparison --causal-only --pole-spacing low-frequency
 ```
 
-### What remains to close Track B
+### Historical closeout sequence
+
+The sequence below has now been completed to the bounded scope described in
+[the closeout report](docs/track_b_closeout.md), including saved impurity spectra.
+It is retained as development history, not an active experiment queue.
 
 The current milestone is a controlled Matsubara/occupation go/no-go assessment,
 not demonstration of a universal DMFT surrogate. Finish it in a bounded sequence:
@@ -453,9 +472,9 @@ limitation rather than reopening the completed candidate search. Continuation
 for the other candidates and application to real materials are separate future
 work, not silently completed by this diagnostic.
 
-The local frozen seed31/32/33 panel was evaluated without retuning: mean
+The saved frozen seed31/32/33 predictions were checked without retuning: mean
 integrated absolute spectral error was 0.981/0.988 (coupling/energy) at eta=.05
-and 0.596/0.627 at eta=.1. At eta=.05 the mean finite-window weights were about
+and 0.595/0.627 at eta=.1. At eta=.05 the mean finite-window weights were about
 0.996 for both prediction and ED. Thus nearly matching total weight did not
 imply accurate peak structure. These are conditional finite-bath results at the
 stated broadenings, not a new model-selection criterion or evidence about the
