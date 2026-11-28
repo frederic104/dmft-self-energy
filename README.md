@@ -10,6 +10,11 @@ or checkpoint inference was repeated. PCA8 remains the Sigma baseline, grid+G
 has conditional property benefits, and the present causal model does not justify
 adoption as the primary predictor. Track A semantics/convergence remain unresolved.
 
+The [AIM error-propagation analysis](docs/aim_error_propagation.md) separates
+finite-window real-offset and residual Sigma errors and evaluates their effects
+using the existing frozen predictions and ED references. This is an oracle
+diagnostic, not an additional trained model or an independent test.
+
 The [surrogate/property assessment](docs/surrogate_property_assessment.md)
 explains what each completed stage establishes, compares property tradeoffs,
 and works through reconstructed G, Sigma and occupation values. Track A target

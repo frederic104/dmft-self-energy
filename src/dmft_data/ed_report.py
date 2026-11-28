@@ -13,7 +13,7 @@ import numpy as np
 import scipy
 from matplotlib.figure import Figure
 
-from .ed_properties import compare_properties, dyson_errors, occupancy_estimates
+from .ed_properties import compare_properties, dyson_errors, dyson_green, occupancy_estimates
 from .ed_spectra import integrate, spectrum_metrics
 from .provenance import sha256_file
 
@@ -63,8 +63,38 @@ def check_metrics(saved, actual):
             raise ValueError(f"Saved score differs from arrays: {key}")
 
 
+def counterfactual_properties(g0, reference_sigma, predicted_sigma, reference_green,
+                              exact_occupancy, omega, beta):
+    """Oracle-only finite-window decomposition; not a predictive correction.
+
+    The real offset is computed per state over the supplied positive-frequency
+    window. The residual retains the entire imaginary error. Exact ED references
+    are used to construct both counterfactuals and never enter a trained model.
+    """
+    if (reference_sigma.ndim != 2 or predicted_sigma.shape != reference_sigma.shape
+            or not np.isfinite(reference_sigma).all() or not np.isfinite(predicted_sigma).all()):
+        raise ValueError("Expected finite matching state-by-frequency Sigma arrays")
+    np.testing.assert_allclose(dyson_green(g0, reference_sigma), reference_green,
+                               rtol=1e-9, atol=1e-11,
+                               err_msg="Reference G0/Sigma/G fail Dyson consistency")
+    delta = predicted_sigma - reference_sigma
+    offset = delta.real.mean(axis=1, keepdims=True)
+    residual = delta - offset
+    results = {}
+    for label, sigma in (("full", predicted_sigma), ("real_offset_only", reference_sigma + offset),
+                         ("residual_only", reference_sigma + residual)):
+        metrics, values = compare_properties(g0, sigma, reference_green, exact_occupancy, omega, beta)
+        results[label] = (metrics, values)
+    _, ref_n = occupancy_estimates(reference_green, omega, beta)
+    full, offset_case, remainder = (results[k][1] for k in ("full", "real_offset_only", "residual_only"))
+    green_interaction = (full["green"] - offset_case["green"] - remainder["green"] + reference_green)
+    n_interaction = (full["occupancy_tail"] - offset_case["occupancy_tail"]
+                     - remainder["occupancy_tail"] + ref_n)
+    return results, offset[:, 0], green_interaction, n_interaction
+
+
 def frozen_diagnostics(root, summary, rows, record, missing):
-    states, frequencies, diagnostics = [], [], []
+    states, frequencies, diagnostics, counterfactuals, counter_states = [], [], [], [], []
     for axis, expected_hash in summary["dataset_sha256"].items():
         dataset = root / axis / "dataset.npz"
         if not dataset.exists():
@@ -106,6 +136,30 @@ def frozen_diagnostics(root, summary, rows, record, missing):
                 check_metrics(row, scores)
                 e = dyson_errors(d["sigma"], sigma, d["green"], green)
                 ids = {k: row[k] for k in ("run", "phase", "axis", "model_seed", "candidate")}
+                try:
+                    cases, offsets, nonlinear_g, nonlinear_n = counterfactual_properties(
+                        d["g0"], d["sigma"], sigma, d["green"], d["occupancy_per_spin"], omega, beta)
+                except (ValueError, AssertionError, np.linalg.LinAlgError) as exc:
+                    counterfactuals.append({**ids, "status": "failed", "reason": str(exc).splitlines()[0],
+                                            "state_count": len(params)})
+                else:
+                    for label, (metrics, values) in cases.items():
+                        counterfactuals.append({**ids, "status": "ok", "case": label,
+                            "state_count": len(params), "offset_rms": float(rmse(offsets)),
+                            "green_first_8_rmse": metrics["green_first_8_complex_rmse"],
+                            "occupancy_vs_exact_rmse": metrics["occupancy_tail_vs_exact_rmse"],
+                            "occupancy_vs_reference_tail_rmse": metrics["occupancy_tail_model_vs_reference_method_rmse"],
+                            "green_interaction_first_8_rmse": float(rmse(nonlinear_g[:, :8])),
+                            "occupancy_interaction_rms": float(rmse(nonlinear_n))})
+                        for i, p in enumerate(params):
+                            counter_states.append({**ids, "case": label, "state_id": state_key(p),
+                                "state_index": i, "epsilon_d": float(p[0]),
+                                "ed_occupancy_per_spin": float(d["occupancy_per_spin"][i]),
+                                "real_offset": float(offsets[i]),
+                                "green_first_8_rmse": float(rmse(values["green"][i, :8] - d["green"][i, :8])),
+                                "occupancy_error": float(values["occupancy_tail"][i] - d["occupancy_per_spin"][i]),
+                                "green_interaction_first_8_rmse": float(rmse(nonlinear_g[i, :8])),
+                                "occupancy_interaction": float(nonlinear_n[i])})
                 sg, gg = np.abs(e["sigma_error"])**2, np.abs(e["green_error"])**2
                 gnorm = float(rmse(e["green_error"]))
                 diagnostics.append({**ids, "state_count": len(params),
@@ -155,7 +209,7 @@ def frozen_diagnostics(root, summary, rows, record, missing):
                             "sigma_error", "green_error", "linear_green_error", "linear_remainder")},
                         "exact_amplification_mean": float(e["exact_amplification"][:, j].mean()),
                         "expansion_parameter_max": float(e["expansion_parameter"][:, j].max())})
-    return states, frequencies, diagnostics
+    return states, frequencies, diagnostics, counterfactuals, counter_states
 
 
 def spectral_diagnostics(root, summary, rows, record, missing, matsubara_root=None):
@@ -254,6 +308,7 @@ def report(results, output):
     if len({p.name for p in results}) != len(results):
         raise ValueError("Result directory names must be distinct")
     artifacts, missing, rows, states, frequencies, diagnostics, spectral, termination = {}, [], [], [], [], [], [], []
+    counterfactuals, counter_states = [], []
 
     def label(path):
         for root in results:
@@ -301,10 +356,12 @@ def report(results, output):
                                     "model_seed": int(path.parent.name.split("_")[-1]), "candidate": name,
                                     **{k: v for k, v in info.items() if k != "history"}})
         if phase in {"frozen_reserved_scale", "frozen_unseen_epsilon"}:
-            st, fr, dg = frozen_diagnostics(root, s, local, record, missing)
+            st, fr, dg, cf, cs = frozen_diagnostics(root, s, local, record, missing)
             states.extend(st)
             frequencies.extend(fr)
             diagnostics.extend(dg)
+            counterfactuals.extend(cf)
+            counter_states.extend(cs)
         if phase == "frozen_impurity_spectra":
             linked = [(p, t) for p, t in summaries.items() if artifacts[label(p/"summary.json")] == s.get("matsubara_report_sha256")]
             if not linked:
@@ -331,13 +388,15 @@ def report(results, output):
     for name, data in (("comparisons", rows), ("metric_summary", grouped), ("state_errors", states),
                        ("frequency_errors", frequencies), ("dyson_diagnostics", diagnostics),
                        ("paired_state_errors", paired), ("spectral_state_errors", spectral),
-                       ("training_termination", termination)):
+                       ("training_termination", termination), ("counterfactual_metrics", counterfactuals),
+                       ("counterfactual_states", counter_states)):
         write_csv(output / f"{name}.csv", data)
     plot_states(states + spectral, frequencies, output)
     summary = {"phase": "posthoc_closed_study_report", "search_status": "closed",
                "artifact_sha256": artifacts, "missing": missing,
                "status_counts": dict(Counter(r["status"] for r in rows)),
                "metric_summary": grouped, "dyson_diagnostics": diagnostics,
+               "counterfactual_failed": [r for r in counterfactuals if r["status"] == "failed"],
                "versions": {"python": platform.python_version(), "numpy": np.__version__,
                             "scipy": scipy.__version__, "matplotlib": matplotlib.__version__},
                "source_sha256": {n: sha256_file(Path(__file__).parent/n) for n in ("ed_report.py", "ed_properties.py", "ed_spectra.py")},
@@ -353,6 +412,7 @@ def report(results, output):
             sd = "unavailable" if r["std"] is None else f"{r['std']:.6g}"
             text.append(f"| {r['run']} / {r['phase']} | {r['axis']} | {r['candidate']} | {r['eta']} | {r['metric']} | {r['mean']:.6g} | {sd} | {r['count']}/{r['expected_rows']} |")
     text += ["", "All failed/unsupported rows: comparisons.csv. Budget termination: training_termination.csv.",
+             "Counterfactual CSVs use ED reference Sigma: post-hoc diagnostics, not deployable correction or new test. Failures are recorded explicitly.",
              "State values: state_errors.csv includes per-spin reference/predicted occupations and complex G/Sigma at omega_0.",
              "Signed occupancy error = first_8_contribution + remaining_contribution + tail_correction_difference + reference_tail_minus_exact; RMSE components are not additive.",
              "Missing inputs (never replaced by invented values): " + json.dumps(missing), ""]
