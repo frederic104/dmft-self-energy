@@ -42,7 +42,7 @@ Expected outputs:
 | comparisons.csv | Every original candidate row, including unsupported/failed records |
 | metric_summary.csv | Mean and population SD of seed metrics, successful/expected counts; single-seed SD empty |
 | training_termination.csv | Recorded optimizer stops; no optimization is performed |
-| state_errors.csv | All frozen states and seeds, epsilon, exact ED n, errors and signed occupation decomposition |
+| state_errors.csv | All frozen states/seeds; reference/predicted G and Sigma at omega_0; raw/tail-corrected n, exact ED n, errors and signed occupation decomposition |
 | paired_state_errors.csv | Same-state/same-seed squared-error differences relative to PCA8 |
 | frequency_errors.csv | Sigma/G/linearization errors, exact amplification and expansion parameter |
 | dyson_diagnostics.csv | Exact identity residual and relative linear remainder for every case |
@@ -55,6 +55,17 @@ rows remain in CSV. Existing summaries without frozen arrays still contribute
 their original tables. Missing frozen inputs are listed explicitly; no scores
 or arrays are invented. A supplied dataset with a wrong recorded hash, mismatched
 references, or inconsistent saved scores causes an error.
+
+For the subsequent [surrogate/property assessment](surrogate_property_assessment.md),
+use the same command with `--output reports/local/surrogate_property_assessment_v1`.
+The extended CSV reports signed `occupancy_first_8_contribution`,
+`occupancy_remaining_contribution`, `occupancy_tail_correction_difference` and
+`reference_tail_minus_exact`; their sum equals `occupancy_error`. The first two
+terms use predicted minus reference Re G, multiplied by 2/beta. The tail term
+compares the two fitted corrections, not the full corrected occupations.
+`reference_occupancy_raw/tail` and `predicted_occupancy_raw/tail` are per spin;
+`omega_0` and the `*_iw0_real/imag` columns identify actual complex values.
+Do not add component RMSEs or pool seed rows as independent physical states.
 
 Frozen evaluators already save all arrays needed here. No extra inference was
 needed for the available results. If a prediction NPZ is lost, restore it from

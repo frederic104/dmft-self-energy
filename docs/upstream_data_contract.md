@@ -2,6 +2,12 @@
 
 ## Closeout review: 2026-11-28
 
+A subsequent [one-file local feasibility check](surrogate_property_assessment.md#one-nominated-material-record-payload-exists-interpretation-is-incomplete)
+found hopping, projectors, k weights, mu and DC storage in the nominated SVO
+archive. This establishes payload presence, not basis/stage/unit consistency
+or convergence. The historical Track A convergence limitation is unchanged;
+no further full-data audit is needed without new producer evidence.
+
 Track A remains **exploratory**. The review below was checked again against the
 paper, public repository directory listings, preprocessing notebook and data
 README. No new raw-file audit or model training was performed. The earlier

@@ -117,11 +117,31 @@ def frozen_diagnostics(root, summary, rows, record, missing):
                     "green_first_8_squared_error_share": float(gg[:, :8].sum()/gg.sum()) if gg.sum() else None,
                     **{k: scores[k] for k in ("sigma_rmse", "green_first_8_complex_rmse",
                         "occupancy_tail_vs_exact_rmse", "reference_tail_vs_exact_rmse")}})
-                _, ref_n = occupancy_estimates(d["green"], omega, beta)
+                ref_raw, ref_n = occupancy_estimates(d["green"], omega, beta)
+                raw = recomputed["occupancy_raw"]
+                # Signed contributions add to n_pred_tail - n_ED exactly.
+                # Separate finite-frequency propagation from fitted-tail effects.
+                low_n = 2 / beta * e["green_error"][:, :8].real.sum(axis=1)
+                upper_n = 2 / beta * e["green_error"][:, 8:].real.sum(axis=1)
+                tail_n = (n - raw) - (ref_n - ref_raw)
                 for i, p in enumerate(params):
                     states.append({**ids, "state_id": state_key(p), "state_index": i,
                         "source_index": int(d.get("source_indices", np.arange(len(params)))[i]),
                         "epsilon_d": float(p[0]), "ed_occupancy_per_spin": float(d["occupancy_per_spin"][i]),
+                        "reference_occupancy_raw": float(ref_raw[i]),
+                        "reference_occupancy_tail": float(ref_n[i]),
+                        "predicted_occupancy_raw": float(raw[i]),
+                        "predicted_occupancy_tail": float(n[i]),
+                        "occupancy_first_8_contribution": float(low_n[i]),
+                        "occupancy_remaining_contribution": float(upper_n[i]),
+                        "occupancy_tail_correction_difference": float(tail_n[i]),
+                        "omega_0": float(omega[0]),
+                        **{f"{label}_iw0_{part}": float(getattr(array[i, 0], part))
+                           for label, array in (("reference_green", d["green"]),
+                                                ("predicted_green", green),
+                                                ("reference_sigma", d["sigma"]),
+                                                ("predicted_sigma", sigma))
+                           for part in ("real", "imag")},
                         "sigma_rmse": float(rmse(e["sigma_error"][i])),
                         "green_first_8_rmse": float(rmse(e["green_error"][i, :8])),
                         "occupancy_error": float(n[i]-d["occupancy_per_spin"][i]),
@@ -333,6 +353,8 @@ def report(results, output):
             sd = "unavailable" if r["std"] is None else f"{r['std']:.6g}"
             text.append(f"| {r['run']} / {r['phase']} | {r['axis']} | {r['candidate']} | {r['eta']} | {r['metric']} | {r['mean']:.6g} | {sd} | {r['count']}/{r['expected_rows']} |")
     text += ["", "All failed/unsupported rows: comparisons.csv. Budget termination: training_termination.csv.",
+             "State values: state_errors.csv includes per-spin reference/predicted occupations and complex G/Sigma at omega_0.",
+             "Signed occupancy error = first_8_contribution + remaining_contribution + tail_correction_difference + reference_tail_minus_exact; RMSE components are not additive.",
              "Missing inputs (never replaced by invented values): " + json.dumps(missing), ""]
     (output / "report.md").write_text("\n".join(text), encoding="utf-8")
     return summary

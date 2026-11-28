@@ -10,6 +10,12 @@ or checkpoint inference was repeated. PCA8 remains the Sigma baseline, grid+G
 has conditional property benefits, and the present causal model does not justify
 adoption as the primary predictor. Track A semantics/convergence remain unresolved.
 
+The [surrogate/property assessment](docs/surrogate_property_assessment.md)
+explains what each completed stage establishes, compares property tradeoffs,
+and works through reconstructed G, Sigma and occupation values. Track A target
+convergence remains a standing limitation; the nominated SVO file contains DFT
+and DC payloads, but their presence does not verify their physical alignment.
+
 Use [the report-only commands](docs/closeout_reproduction.md) to regenerate
 tables and all-state figures from saved results. Earlier training/evaluation
 commands below document the study's development; they are not instructions to

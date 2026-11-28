@@ -99,6 +99,26 @@ def test_saved_report_all_states_no_models_and_missing_inputs(tmp_path, monkeypa
     assert len(rows) == 8
     assert len({r["state_id"] for r in rows}) == 2
     assert {r["source_index"] for r in rows} == {"3", "8"}
+    for row in rows:
+        r = {k: float(v) for k, v in row.items()
+             if k.startswith(("occupancy_", "reference_", "predicted_"))}
+        epsilon = float(row["epsilon_d"])
+        shift = (.01 if row["candidate"] == "pca_ridge_8"
+                 else .02*(int(row["model_seed"])-30))
+        # Independent noninteracting result for a shifted level, not a model fit.
+        np.testing.assert_allclose(
+            r["predicted_occupancy_tail"], expit(-20*(epsilon+shift)), atol=2e-7)
+        g = complex(r["predicted_green_iw0_real"], r["predicted_green_iw0_imag"])
+        np.testing.assert_allclose(g, 1/(1j*np.pi/20-epsilon-shift))
+        np.testing.assert_allclose(r["predicted_sigma_iw0_real"], shift)
+        assert r["predicted_sigma_iw0_imag"] == 0
+        components = sum(r[k] for k in (
+            "occupancy_first_8_contribution", "occupancy_remaining_contribution",
+            "occupancy_tail_correction_difference", "reference_tail_minus_exact"))
+        np.testing.assert_allclose(components, r["occupancy_error"], atol=1e-15)
+        np.testing.assert_allclose(
+            r["predicted_occupancy_tail"]-float(row["ed_occupancy_per_spin"]),
+            r["occupancy_error"], atol=1e-15)
     with (out/"paired_state_errors.csv").open() as handle:
         assert len(list(csv.DictReader(handle))) == 4
     assert (out/"states_00.png").exists()
