@@ -1,5 +1,12 @@
 # Project Architecture
 
+The current extension is described in [research_integration.md](research_integration.md).
+`lattice.py` owns k-resolved matrix Dyson inversion and projection/averaging for
+explicit normalized inputs. It reuses `provenance.py` and leaves scalar AIM
+properties, HDF5 extraction and learning in their existing modules.
+`scripts/lattice_reference_demo.py` composes a synthetic example; it does not
+add a second material extraction or training pipeline.
+
 The repository is organized around a non-destructive, staged data workflow:
 
 - `src/dmft_data/` contains reusable inventory, extraction, validation,

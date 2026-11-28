@@ -1,6 +1,13 @@
 
 # DMFT Self-Energy
 
+The [integrated research review](docs/research_integration.md) connects the
+existing representation study to continuation and material postprocessing,
+with explicit basis/DC and generalization limits. A new
+[lattice Dyson reference](docs/lattice_reference.md) computes synthetic DOS and
+k-resolved spectra from declared common-basis inputs; it does not infer those
+conventions from a material archive or establish material prediction accuracy.
+
 ## Current result: Track B candidate search is closed
 
 The [integrated closeout](docs/track_b_closeout.md) separates development,

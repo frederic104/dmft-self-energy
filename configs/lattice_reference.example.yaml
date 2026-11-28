@@ -1,0 +1,9 @@
+# These are input declarations, not evidence that a material was verified.
+basis: orthonormal
+sigma_convention: impurity_before_dc
+energy_axis: relative_to_mu
+spin: one_explicit_block
+energy_unit: model_units
+interpretation: synthetic
+sampling: bz
+domain: real_frequency
